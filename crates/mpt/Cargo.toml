@@ -1,0 +1,29 @@
+[package]
+name = "mpt"
+description = ""
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rlp.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+# reth
+reth-trie.workspace = true
+
+# alloy
+alloy-primitives.workspace = true
+alloy-rlp.workspace = true
+
+[dev-dependencies]
+hex-literal.workspace = true
+
+mpt = { path = ".", features = ["preimage_context"] }
+
+[features]
+default = []
+preimage_context = []

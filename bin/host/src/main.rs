@@ -1,0 +1,67 @@
+use std::sync::Arc;
+
+use clap::Parser;
+use host_executor::{
+    bins::{cli::HostArgs, execute_hook::PersistExecutionReport}, build_executor,
+    create_eth_block_execution_strategy_factory,
+    BlockExecutor, EthExecutorComponents,
+};
+use provider::create_provider;
+use tracing_subscriber::{
+    filter::EnvFilter, fmt, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt,
+};
+use zkm_sdk::{include_elf, ProverClient};
+
+#[tokio::main]
+async fn main() -> eyre::Result<()> {
+    // Initialize the environment variables.
+    dotenv::dotenv().ok();
+
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
+
+    // Initialize the logger.
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::from_default_env()
+                .add_directive("zkm_core_machine=warn".parse().unwrap())
+                .add_directive("zkm_core_executor::executor=warn".parse().unwrap())
+                .add_directive("zkm_prover=warn".parse().unwrap()),
+        )
+        .init();
+
+    // Parse the command line arguments.
+    let args = HostArgs::parse();
+    let block_number = args.block_number;
+    let report_path = args.report_path.clone();
+    let config = args.as_config().await?;
+    let persist_execution_report = PersistExecutionReport::new(
+        config.chain.id(),
+        report_path,
+        args.precompile_tracking,
+        args.opcode_tracking,
+    );
+
+    let prover_client = Arc::new(ProverClient::new());
+
+    let elf = include_elf!("reth").to_vec();
+    let block_execution_strategy_factory =
+        create_eth_block_execution_strategy_factory(&config.genesis, config.custom_beneficiary);
+    let provider = config.rpc_url.as_ref().map(|url| create_provider(url.clone()));
+
+    let executor = build_executor::<EthExecutorComponents<_>, _>(
+        elf,
+        provider,
+        block_execution_strategy_factory,
+        prover_client,
+        persist_execution_report,
+        config,
+    )
+    .await?;
+
+    executor.execute(block_number).await?;
+
+    Ok(())
+}

@@ -1,0 +1,23 @@
+[package]
+name = "rpc-db"
+description = ""
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+# reth
+reth-storage-errors.workspace = true
+
+# revm
+revm-database-interface.workspace = true
+revm-primitives.workspace = true
+revm-state.workspace = true
+
+# alloy
+alloy-primitives.workspace = true
+alloy-provider.workspace = true
+alloy-rpc-types.workspace = true

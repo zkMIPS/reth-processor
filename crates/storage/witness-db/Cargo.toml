@@ -1,0 +1,19 @@
+[package]
+name = "witness-db"
+description = ""
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+# alloy
+alloy-primitives = { workspace = true, features = ["serde"] }
+
+# reth
+reth-storage-errors.workspace = true
+
+# revm
+revm-database-interface.workspace = true
+revm-primitives.workspace = true
+revm-state = { workspace = true, features = ["serde"] }

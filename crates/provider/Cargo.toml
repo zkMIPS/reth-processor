@@ -1,0 +1,17 @@
+[package]
+name = "provider"
+description = ""
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+url.workspace = true
+
+# alloy
+alloy-provider.workspace = true
+alloy-json-rpc.workspace = true
+alloy-rpc-client.workspace = true
+alloy-transport.workspace = true
