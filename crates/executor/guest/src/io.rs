@@ -3,6 +3,8 @@ use std::iter::once;
 use alloy_consensus::{Block, BlockHeader, Header};
 use alloy_primitives::map::HashMap;
 use itertools::Itertools;
+use mpt::EthereumState;
+use primitives::genesis::Genesis;
 use reth_errors::ProviderError;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_primitives_traits::NodePrimitives;
@@ -12,8 +14,6 @@ use revm::{
     DatabaseRef,
 };
 use revm_primitives::{keccak256, Address, B256, U256};
-use mpt::EthereumState;
-use primitives::genesis::Genesis;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 

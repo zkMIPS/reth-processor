@@ -12,10 +12,10 @@ pub mod tracking;
 mod into_primitives;
 pub use into_primitives::{FromInput, IntoInput, IntoPrimitives, ValidateBlockPostExecution};
 
-use std::sync::Arc;
 use alloy_primitives::FixedBytes;
 use executor::{EthClientExecutor, DESERIALZE_INPUTS};
 use io::EthClientExecutorInput;
+use std::sync::Arc;
 
 pub fn verify_block_hash(input: &Vec<u8>) -> FixedBytes<32> {
     println!("cycle-tracker-report-start: {}", DESERIALZE_INPUTS);

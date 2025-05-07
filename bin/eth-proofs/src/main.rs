@@ -10,9 +10,9 @@ use host_executor::{
     EthExecutorComponents, FullExecutor,
 };
 use provider::create_provider;
-use zkm_sdk::{include_elf, ProverClient};
 use tracing::{error, info};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use zkm_sdk::{include_elf, ProverClient};
 
 mod cli;
 
@@ -64,7 +64,7 @@ async fn main() -> eyre::Result<()> {
 
     // let mut builder = ProverClient::builder().cuda();
     if let Some(_endpoint) = &args.moongate_endpoint {
-    //     builder = builder.with_moongate_endpoint(endpoint)
+        //     builder = builder.with_moongate_endpoint(endpoint)
     }
 
     // let client = Arc::new(builder.build());

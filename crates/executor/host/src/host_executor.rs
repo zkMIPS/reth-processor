@@ -4,6 +4,12 @@ use alloy_consensus::{BlockHeader, Header, TxReceipt};
 use alloy_evm::EthEvmFactory;
 use alloy_primitives::{Bloom, Sealable};
 use alloy_provider::{Network, Provider};
+use guest_executor::{
+    custom::CustomEvmFactory, io::ClientExecutorInput, IntoInput, IntoPrimitives,
+    ValidateBlockPostExecution,
+};
+use mpt::EthereumState;
+use primitives::{account_proof::eip1186_proof_to_account_proof, genesis::Genesis};
 use reth_chainspec::ChainSpec;
 use reth_evm::{
     execute::{BasicBlockExecutor, Executor},
@@ -16,12 +22,6 @@ use reth_primitives_traits::{Block, BlockBody};
 use reth_trie::KeccakKeyHasher;
 use revm::database::CacheDB;
 use revm_primitives::{Address, B256};
-use guest_executor::{
-    custom::CustomEvmFactory, io::ClientExecutorInput, IntoInput, IntoPrimitives,
-    ValidateBlockPostExecution,
-};
-use mpt::EthereumState;
-use primitives::{account_proof::eip1186_proof_to_account_proof, genesis::Genesis};
 use rpc_db::RpcDb;
 
 use crate::HostError;

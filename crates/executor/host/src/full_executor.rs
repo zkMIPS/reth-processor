@@ -8,9 +8,9 @@ use std::{
 use alloy_provider::Provider;
 use either::Either;
 use eyre::bail;
+use guest_executor::io::ClientExecutorInput;
 use reth_primitives_traits::NodePrimitives;
 use revm_primitives::B256;
-use guest_executor::io::ClientExecutorInput;
 use rpc_db::RpcDb;
 use serde::de::DeserializeOwned;
 use tokio::{task, time::sleep};
@@ -112,7 +112,9 @@ pub trait BlockExecutor<C: ExecutorComponents> {
             let pk = self.pk();
 
             let proof = task::spawn_blocking(move || {
-                client.prove(pk.as_ref(), stdin, Default::default(), Default::default(), prove_mode).map_err(|err| eyre::eyre!("{err}"))
+                client
+                    .prove(pk.as_ref(), stdin, Default::default(), Default::default(), prove_mode)
+                    .map_err(|err| eyre::eyre!("{err}"))
             })
             .await
             .map_err(|err| eyre::eyre!("{err}"))??;

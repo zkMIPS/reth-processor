@@ -5,12 +5,12 @@ use std::{
 
 use alloy_consensus::{Block, BlockHeader};
 use csv::{Writer, WriterBuilder};
-use reth_primitives_traits::{BlockBody, NodePrimitives};
-use revm_bytecode::opcode::OPCODE_INFO;
 use guest_executor::executor::{
     ACCRUE_LOG_BLOOM, BLOCK_EXECUTION, COMPUTE_STATE_ROOT, DESERIALZE_INPUTS, INIT_WITNESS_DB,
     RECOVER_SENDERS, VALIDATE_EXECUTION,
 };
+use reth_primitives_traits::{BlockBody, NodePrimitives};
+use revm_bytecode::opcode::OPCODE_INFO;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use zkm_core_executor::syscalls::SyscallCode;

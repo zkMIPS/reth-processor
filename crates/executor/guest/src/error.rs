@@ -1,7 +1,7 @@
 use alloy_primitives::{Address, FixedBytes};
+use mpt::Error as MptError;
 use reth_consensus::ConsensusError;
 use reth_evm::execute::BlockExecutionError;
-use mpt::Error as MptError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {

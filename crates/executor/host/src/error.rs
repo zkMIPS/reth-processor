@@ -1,8 +1,8 @@
 use alloy_rpc_types::ConversionError;
 use alloy_transport::TransportError;
+use mpt::FromProofError;
 use reth_errors::BlockExecutionError;
 use revm_primitives::B256;
-use mpt::FromProofError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

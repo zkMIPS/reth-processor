@@ -3,16 +3,16 @@
 use alloy_chains::Chain;
 use alloy_evm::EthEvmFactory;
 pub use error::Error as HostError;
+use guest_executor::custom::CustomEvmFactory;
+use primitives::genesis::Genesis;
 use reth_chainspec::ChainSpec;
 use reth_evm_ethereum::EthEvmConfig;
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_evm::OpEvmConfig;
 use revm_primitives::Address;
-use guest_executor::custom::CustomEvmFactory;
-use primitives::genesis::Genesis;
-use zkm_sdk::ZKMProofKind;
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
+use zkm_sdk::ZKMProofKind;
 
 #[cfg(feature = "alerting")]
 pub mod alerting;

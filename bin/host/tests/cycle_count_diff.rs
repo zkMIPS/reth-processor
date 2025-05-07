@@ -4,8 +4,6 @@ use alloy_chains::Chain;
 use alloy_consensus::Block;
 use alloy_network::Ethereum;
 use alloy_provider::RootProvider;
-use madato::{mk_table, types::TableRow};
-use reth_primitives_traits::NodePrimitives;
 use guest_executor::executor::{
     ACCRUE_LOG_BLOOM, BLOCK_EXECUTION, COMPUTE_STATE_ROOT, DESERIALZE_INPUTS, INIT_WITNESS_DB,
     RECOVER_SENDERS, VALIDATE_EXECUTION,
@@ -14,11 +12,13 @@ use host_executor::{
     build_executor, create_eth_block_execution_strategy_factory, BlockExecutor, Config,
     EthExecutorComponents, ExecutionHooks,
 };
+use madato::{mk_table, types::TableRow};
 use primitives::genesis::Genesis;
+use reth_primitives_traits::NodePrimitives;
 use serde::{Deserialize, Serialize};
 use thousands::Separable;
 use url::Url;
-use zkm_sdk::{include_elf, ProverClient, ExecutionReport};
+use zkm_sdk::{include_elf, ExecutionReport, ProverClient};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_in_zkvm() {

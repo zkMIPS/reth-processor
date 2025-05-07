@@ -1,10 +1,6 @@
 use std::sync::Arc;
 
 use alloy_provider::{network::Ethereum, Network, RootProvider};
-use reth_chainspec::ChainSpec;
-use reth_evm::ConfigureEvm;
-use reth_optimism_chainspec::OpChainSpec;
-use revm_primitives::{address, Address};
 use guest_executor::{
     executor::{ClientExecutor, EthClientExecutor},
     io::ClientExecutorInput,
@@ -12,6 +8,10 @@ use guest_executor::{
 };
 use host_executor::{EthHostExecutor, HostExecutor};
 use primitives::genesis::Genesis;
+use reth_chainspec::ChainSpec;
+use reth_evm::ConfigureEvm;
+use reth_optimism_chainspec::OpChainSpec;
+use revm_primitives::{address, Address};
 use rpc_db::RpcDb;
 use serde::{de::DeserializeOwned, Serialize};
 use tracing_subscriber::{

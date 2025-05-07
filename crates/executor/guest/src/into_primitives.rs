@@ -1,11 +1,11 @@
 use alloy_consensus::{Block, Header, TxEnvelope};
 use alloy_network::{Ethereum, Network};
+use primitives::genesis::Genesis;
 use reth_chainspec::ChainSpec;
 use reth_errors::ConsensusError;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_execution_types::BlockExecutionOutput;
 use reth_primitives_traits::{NodePrimitives, RecoveredBlock};
-use primitives::genesis::Genesis;
 
 pub trait IntoPrimitives<N: Network>: NodePrimitives {
     fn into_primitive_block(block: N::BlockResponse) -> Self::Block;

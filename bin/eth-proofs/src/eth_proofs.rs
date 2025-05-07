@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use eyre::eyre;
+use host_executor::ExecutionHooks;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
-use host_executor::ExecutionHooks;
 use tracing::error;
 use zkm_sdk::{ExecutionReport, HashableKey, ZKMVerifyingKey};
 
