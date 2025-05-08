@@ -4,11 +4,10 @@ use alloy_chains::Chain;
 use alloy_primitives::Address;
 use alloy_provider::{network::AnyNetwork, Provider, RootProvider};
 use clap::Parser;
+use host_executor::Config;
 use primitives::genesis::Genesis;
 use url::Url;
 use zkm_sdk::ZKMProofKind;
-
-use crate::Config;
 
 /// The arguments for the host executable.
 #[derive(Debug, Clone, Parser)]

@@ -93,7 +93,7 @@ pub trait BlockExecutor<C: ExecutorComponents> {
         let (mut public_values, execution_report) = execute_result?;
 
         let cycles: u64 = execution_report.cycle_tracker.values().sum();
-        println!("cycles: {:?}", cycles);
+        info!("total cycles: {:?}", cycles);
 
         // Read the block hash.
         let block_hash = public_values.read::<B256>();

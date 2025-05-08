@@ -33,6 +33,7 @@ cargo run -r --bin host -- --block-number 18884864 --rpc-url <RPC> --chain-id <c
 # eg.
 cargo run -r --bin host -- --block-number 18884864 --rpc-url 'https://lb.drpc.org/ogrpc?network=ethereum&dkey=Amg1g8X7w0dsjS8j1UBYFyia4vGG9GER74ff-gTye0yN' --chain-id 1
 ```
+You can register at [drpc](https://drpc.org) to obtain `rpc-url`​.
 
 The host CLI executes the block while fetching additional data necessary for offline execution. The same execution and verification logic is then run inside the zkVM. No actual proof is generated from this command, but it will print out a detailed execution report and statistics on the # of cycles to a CSV file (can be specified by the `--report-path` argument).
 
@@ -69,9 +70,9 @@ This will generate proofs locally on your machine. Given how large these program
 If you want to run proofs using [prover network](https://docs.zkm.io/dev/prover.html#network-prover), follow the sign-up instructions, and run the command with the following environment variables prefixed:
 
 ```bash
-export ZKM_PRIVATE_KEY=<your_private_key>          # Private key corresponding to your registered public key
-export SSL_CERT_PATH=<path_to_client_certificate>  # Path to client certificate
-export SSL_KEY_PATH=<path_to_client_key>           # Path to client key
+export ZKM_PRIVATE_KEY=<your_private_key>       # Private key corresponding to your registered public key
+export SSL_CERT_PATH=<path_to_ssl_certificate>  # Path to the ssl client certificate
+export SSL_KEY_PATH=<path_to_ssl_key>           # Path to the ssl client key
 ```
 
 #### Benchmarking on ETH proofs
@@ -85,10 +86,10 @@ To run benchmarking with [ETH proofs](https://staging--ethproofs.netlify.app/), 
    export HTTP_RPC_URL=<your_eth_mainnet_http_rpc>
    export WS_RPC_URL=<your_eth_mainnet_ws_rpc>
    ```
+   You can register at [drpc](https://drpc.org) to obtain `HTTP_RPC_URL`​ and `WS_RPC_URL`​.
 
 2. Run the benchmarking recipe:
    ```bash
-   # Run with custom cluster ID and sleep time (100s)
    cargo run -r --bin eth-proofs -- --eth-proofs-cluster-id 1 --block-interval 100
    ```
 
@@ -110,4 +111,4 @@ This issue can be caused using an RPC provider that returns incorrect results fr
 
 # Reference
 
-- [rsp](https://github.com/succinctlabs/rsp.git)
+[rsp](https://github.com/succinctlabs/rsp.git)
