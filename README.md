@@ -33,7 +33,6 @@ cargo run -r --bin host -- --block-number 18884864 --rpc-url <RPC> --chain-id <c
 # eg.
 cargo run -r --bin host -- --block-number 18884864 --rpc-url 'https://lb.drpc.org/ogrpc?network=ethereum&dkey=Amg1g8X7w0dsjS8j1UBYFyia4vGG9GER74ff-gTye0yN' --chain-id 1
 ```
-You can register at [drpc](https://drpc.org) to obtain `rpc-url`​.
 
 The host CLI executes the block while fetching additional data necessary for offline execution. The same execution and verification logic is then run inside the zkVM. No actual proof is generated from this command, but it will print out a detailed execution report and statistics on the # of cycles to a CSV file (can be specified by the `--report-path` argument).
 
@@ -86,7 +85,6 @@ To run benchmarking with [ETH proofs](https://staging--ethproofs.netlify.app/), 
    export HTTP_RPC_URL=<your_eth_mainnet_http_rpc>
    export WS_RPC_URL=<your_eth_mainnet_ws_rpc>
    ```
-   You can register at [drpc](https://drpc.org) to obtain `HTTP_RPC_URL`​ and `WS_RPC_URL`​.
 
 2. Run the benchmarking recipe:
    ```bash
@@ -107,7 +105,7 @@ A good small block to test on for Ethereum mainnet is: `20526624`.
 
 ### State root mismatch
 
-This issue can be caused using an RPC provider that returns incorrect results from the `eth_getProof` endpoint. We have empirically observed such issues with many RPC providers. We recommend using Alchemy.
+This issue can be caused using an RPC provider that returns incorrect results from the `eth_getProof` endpoint. We have empirically observed such issues with many RPC providers. We recommend using [Alchemy](https://www.alchemy.com/) or [Chainstack](https://chainstack.com/).
 
 # Reference
 

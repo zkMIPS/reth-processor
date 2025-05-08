@@ -257,8 +257,8 @@ dependencies = [
 
 [[package]]
 name = "alloy-primitives"
-version = "1.0.0"
-source = "git+https://github.com/zkMIPS-patches/core.git?branch=patch-alloy-primitives-1.0.0#7bd144fb41dfcf554e12d65eed4c918fc46beefd"
+version = "1.1.0"
+source = "git+https://github.com/zkMIPS-patches/core.git?branch=patch-alloy-primitives-1.1.0#b49b22a5dee69f8d032a6b61984855bc41af7a81"
 dependencies = [
  "alloy-rlp",
  "bytes",
@@ -4759,7 +4759,7 @@ dependencies = [
 [[package]]
 name = "zkm-lib"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#6efc1d944dd871ecc0e897c2ae0f4429aafed4f9"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -4772,7 +4772,7 @@ dependencies = [
 [[package]]
 name = "zkm-primitives"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#6efc1d944dd871ecc0e897c2ae0f4429aafed4f9"
 dependencies = [
  "bincode",
  "hex",
@@ -4790,7 +4790,7 @@ dependencies = [
 [[package]]
 name = "zkm-zkvm"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#6efc1d944dd871ecc0e897c2ae0f4429aafed4f9"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -4831,6 +4831,11 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "alloy-primitives"
+version = "1.0.0"
+source = "git+https://github.com/zkMIPS-patches/core.git?branch=patch-alloy-primitives-1.0.0#7bd144fb41dfcf554e12d65eed4c918fc46beefd"
 
 [[patch.unused]]
 name = "substrate-bn"

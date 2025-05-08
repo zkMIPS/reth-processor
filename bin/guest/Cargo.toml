@@ -24,4 +24,5 @@ sha2 = { git = "https://github.com/zkMIPS-patches/RustCrypto-hashes", branch = "
 bn = { git = "https://github.com/zkMIPS-patches/bn", branch = "patch-0.6.0", package = "substrate-bn" }
 k256 = { git = "https://github.com/zkMIPS-patches/elliptic-curves", branch = "patch-k256-0.13.4" }
 p256 = { git = "https://github.com/zkMIPS-patches/elliptic-curves", branch = "patch-p256-0.13.2" }
-alloy-primitives = { git = "https://github.com/zkMIPS-patches/core.git", branch = "patch-alloy-primitives-1.0.0" }
+alloy-primitives-v1-0-0 = { git = "https://github.com/zkMIPS-patches/core.git", package = "alloy-primitives", branch = "patch-alloy-primitives-1.0.0" }
+alloy-primitives-v1-1-0 = { git = "https://github.com/zkMIPS-patches/core.git", package = "alloy-primitives", branch = "patch-alloy-primitives-1.1.0" }

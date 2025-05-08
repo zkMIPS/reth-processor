@@ -93,7 +93,7 @@ revm-inspectors = { git = "https://github.com/zkMIPS-patches/revm-inspectors", b
 # alloy
 alloy-chains = { version = "0.2.0", default-features = false }
 alloy-evm = { git = "https://github.com/zkMIPS-patches/evm", branch = "patch-0.4.0", default-features = false }
-alloy-primitives = { version = "1.1.0", default-features = false, features = ["sha3-keccak", "map-foldhash"] }
+alloy-primitives = { version = "1.0.0", default-features = false, features = ["sha3-keccak", "map-foldhash"] }
 alloy-provider = { version = "0.14.0", default-features = false, features = [
     "reqwest",
     "reqwest-rustls-tls",
@@ -137,4 +137,5 @@ sha2 = { git = "https://github.com/zkMIPS-patches/RustCrypto-hashes", branch = "
 bn = { git = "https://github.com/zkMIPS-patches/bn", branch = "patch-0.6.0", package = "substrate-bn" }
 k256 = { git = "https://github.com/zkMIPS-patches/elliptic-curves", branch = "patch-k256-0.13.4" }
 p256 = { git = "https://github.com/zkMIPS-patches/elliptic-curves", branch = "patch-p256-0.13.2" }
-alloy-primitives = { git = "https://github.com/zkMIPS-patches/core.git", branch = "patch-alloy-primitives-1.1.0" }
+alloy-primitives-v1-0-0 = { git = "https://github.com/zkMIPS-patches/core.git", package = "alloy-primitives", branch = "patch-alloy-primitives-1.0.0" }
+alloy-primitives-v1-1-0 = { git = "https://github.com/zkMIPS-patches/core.git", package = "alloy-primitives", branch = "patch-alloy-primitives-1.1.0" }
