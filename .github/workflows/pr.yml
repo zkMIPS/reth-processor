@@ -22,4 +22,3 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
-

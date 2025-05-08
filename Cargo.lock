@@ -781,15 +781,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
-name = "arbitrary"
-version = "1.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dde20b3d026af13f561bdd0f15edf01fc734f0dafcedbaf42bba506a9517f223"
-dependencies = [
- "derive_arbitrary",
-]
-
-[[package]]
 name = "ark-bls12-381"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1530,11 +1521,10 @@ dependencies = [
 
 [[package]]
 name = "c-kzg"
-version = "2.1.0"
+version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e7e3c397401eb76228c89561cf22f85f41c95aa799ee9d860de3ea1cbc728fc"
+checksum = "7318cfa722931cb5fe0838b98d3ce5621e75f6a6408abc21721d80de9223f2e4"
 dependencies = [
- "arbitrary",
  "blst",
  "cc",
  "glob",
@@ -1866,9 +1856,9 @@ dependencies = [
 
 [[package]]
 name = "crc"
-version = "3.2.1"
+version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69e6e4d7b33a94f0991c26729976b10ebde1d34c3ee82408fb536164fa10d636"
+checksum = "9710d3b3739c2e349eb44fe848ad0b7c8cb1e42bd87ee49371df2f7acaf3e675"
 dependencies = [
  "crc-catalog",
 ]
@@ -2182,17 +2172,6 @@ name = "derive-where"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e73f2692d4bd3cac41dca28934a39894200c9fabf49586d77d0e5954af1d7902"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.101",
-]
-
-[[package]]
-name = "derive_arbitrary"
-version = "1.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30542c1ad912e0e3d22a1935c290e12e8a29d704a420177a31faad4a601a0800"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4279,7 +4258,7 @@ dependencies = [
 [[package]]
 name = "k256"
 version = "0.13.4"
-source = "git+https://github.com/zkMIPS-patches/elliptic-curves?branch=patch-k256-0.13.4#8b20cc93790f3a3e3d7bc2bf6dca2ce75c9dbdb2"
+source = "git+https://github.com/zkMIPS-patches/elliptic-curves?branch=patch-k256-0.13.4#c5dcaf728c16a982b442ec05b13d0cad053dad52"
 dependencies = [
  "cfg-if",
  "ecdsa",
@@ -5060,7 +5039,7 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 [[package]]
 name = "p256"
 version = "0.13.2"
-source = "git+https://github.com/zkMIPS-patches/elliptic-curves?branch=patch-p256-0.13.2#2f750c6eb2445127ef38c8ebb3e91ed720cee03e"
+source = "git+https://github.com/zkMIPS-patches/elliptic-curves?branch=patch-p256-0.13.2#8ca3682b46941daf236ee25c232106774ae7bc18"
 dependencies = [
  "ecdsa",
  "elliptic-curve",
@@ -5759,7 +5738,7 @@ dependencies = [
 [[package]]
 name = "primeorder"
 version = "0.13.1"
-source = "git+https://github.com/zkMIPS-patches/elliptic-curves?branch=patch-p256-0.13.2#2f750c6eb2445127ef38c8ebb3e91ed720cee03e"
+source = "git+https://github.com/zkMIPS-patches/elliptic-curves?branch=patch-p256-0.13.2#8ca3682b46941daf236ee25c232106774ae7bc18"
 dependencies = [
  "elliptic-curve",
 ]
@@ -7340,11 +7319,12 @@ dependencies = [
 
 [[package]]
 name = "rustls-pki-types"
-version = "1.11.0"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "917ce264624a4b4db1c364dcc35bfca9ded014d0a958cd47ad3e960e988ea51c"
+checksum = "229a4a4c221013e7e1f1a043678c5cc39fe5171437c88fb47151a21e6f5b5c79"
 dependencies = [
  "web-time",
+ "zeroize",
 ]
 
 [[package]]
@@ -8168,7 +8148,7 @@ dependencies = [
 [[package]]
 name = "test-artifacts"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "zkm-build",
 ]
@@ -9833,7 +9813,7 @@ dependencies = [
 [[package]]
 name = "zkm-build"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -9845,7 +9825,7 @@ dependencies = [
 [[package]]
 name = "zkm-core-executor"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "anyhow",
  "bincode",
@@ -9887,7 +9867,7 @@ dependencies = [
 [[package]]
 name = "zkm-core-machine"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -9939,7 +9919,7 @@ dependencies = [
 [[package]]
 name = "zkm-curves"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "cfg-if",
  "curve25519-dalek",
@@ -9961,7 +9941,7 @@ dependencies = [
 [[package]]
 name = "zkm-derive"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -9970,7 +9950,7 @@ dependencies = [
 [[package]]
 name = "zkm-lib"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#7d9b735a1d570adad216cccfe1bb951861329bb7"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -9983,7 +9963,7 @@ dependencies = [
 [[package]]
 name = "zkm-primitives"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "bincode",
  "hex",
@@ -10001,7 +9981,7 @@ dependencies = [
 [[package]]
 name = "zkm-prover"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "anyhow",
  "bincode",
@@ -10040,7 +10020,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-circuit"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "hashbrown 0.14.5",
  "itertools 0.13.0",
@@ -10073,7 +10053,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-compiler"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "backtrace",
  "itertools 0.13.0",
@@ -10094,7 +10074,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-core"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "backtrace",
  "ff 0.13.1",
@@ -10130,7 +10110,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-derive"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -10139,7 +10119,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-gnark-ffi"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "anyhow",
  "bincode",
@@ -10164,7 +10144,7 @@ dependencies = [
 [[package]]
 name = "zkm-sdk"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "alloy-signer",
  "alloy-signer-local",
@@ -10211,7 +10191,7 @@ dependencies = [
 [[package]]
 name = "zkm-stark"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "arrayref",
  "hashbrown 0.14.5",
@@ -10253,7 +10233,7 @@ dependencies = [
 [[package]]
 name = "zkm-zkvm"
 version = "1.0.0"
-source = "git+https://github.com/zkMIPS/zkMIPS#9941c55a03607e4075dbd37f4cb22348811a7014"
+source = "git+https://github.com/zkMIPS/zkMIPS#8ca782c6ff1056e6f0d27a254c341ad1f3227d03"
 dependencies = [
  "bincode",
  "cfg-if",

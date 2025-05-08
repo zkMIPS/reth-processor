@@ -57,6 +57,9 @@ If you want to actually generate proofs, you can run the CLI using the `--prove`
 
 ```bash
 cargo run --bin host -r -- --block-number 18884864 --chain-id <chain-id> --prove
+
+# eg.
+cargo run -r --bin host -- --block-number 18884864 --rpc-url 'https://lb.drpc.org/ogrpc?network=ethereum&dkey=Amg1g8X7w0dsjS8j1UBYFyia4vGG9GER74ff-gTye0yN' --chain-id 1 --prove
 ```
 
 This will generate proofs locally on your machine. Given how large these programs are, it might take a while for the proof to generate.
@@ -66,12 +69,10 @@ This will generate proofs locally on your machine. Given how large these program
 If you want to run proofs using [prover network](https://docs.zkm.io/dev/prover.html#network-prover), follow the sign-up instructions, and run the command with the following environment variables prefixed:
 
 ```bash
-export ZKM_PRIVATE_KEY=<your_private_key>      # Private key corresponding to your registered public key
-export CERT_PATH=<path_to_client_certificate>  # Path to client certificate
-export KEY_PATH=<path_to_client_key>           # Path to client key
+export ZKM_PRIVATE_KEY=<your_private_key>          # Private key corresponding to your registered public key
+export SSL_CERT_PATH=<path_to_client_certificate>  # Path to client certificate
+export SSL_KEY_PATH=<path_to_client_key>           # Path to client key
 ```
-
-To specify a custom prover network RPC, you can use the `PROVER_NETWORK_RPC` environment variable.
 
 #### Benchmarking on ETH proofs
 
