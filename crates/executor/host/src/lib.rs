@@ -1,4 +1,4 @@
-#![cfg_attr(not(test), warn(unused_crate_dependencies))]
+#![cfg_attr(not(test), allow(unused_crate_dependencies))]
 
 use alloy_chains::Chain;
 use alloy_evm::EthEvmFactory;
