@@ -28,3 +28,12 @@ stdin.bin
 
 # input/
 .vscode
+
+# cert
+ca.key
+ca.pem
+ca.srl
+openssl.cnf
+ssl.csr
+ssl.pem
+ssl.key
