@@ -69,6 +69,7 @@ This will generate proofs locally on your machine. Given how large these program
 If you want to run proofs using [prover network](https://docs.zkm.io/dev/prover.html#network-prover), follow the sign-up instructions, and run the command with the following environment variables prefixed:
 
 ```bash
+export ZKM_PROVER="network"
 export ZKM_PRIVATE_KEY=<your_private_key>       # Private key corresponding to your registered public key
 export SSL_CERT_PATH=<path_to_ssl_certificate>  # Path to the ssl client certificate
 export SSL_KEY_PATH=<path_to_ssl_key>           # Path to the ssl client key
