@@ -3,6 +3,7 @@ use reth_chainspec::{BaseFeeParams, BaseFeeParamsKind, Chain, ChainSpec, Ethereu
 use serde::{Deserialize, Serialize};
 
 pub const LINEA_GENESIS_JSON: &str = include_str!("./genesis/59144.json");
+pub const GOAT_GENESIS_JSON: &str = include_str!("./genesis/2345.json");
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Genesis {
@@ -10,6 +11,7 @@ pub enum Genesis {
     OpMainnet,
     Sepolia,
     Linea,
+    GOAT,
     Custom(String),
 }
 
@@ -29,6 +31,7 @@ impl TryFrom<u64> for Genesis {
             10 => Ok(Genesis::OpMainnet),
             59144 => Ok(Genesis::Linea),
             11155111 => Ok(Genesis::Sepolia),
+            2345 => Ok(Genesis::GOAT),
             id => Err(eyre!("The chain {id} is not supported")),
         }
     }
@@ -72,6 +75,7 @@ impl TryFrom<&Genesis> for ChainSpec {
                 Err(eyre!("Only converting Genesis::OpMainnet to OpChainSpec is supported"))
             }
             Genesis::Linea => Ok(ChainSpec::from_genesis(genesis_from_json(LINEA_GENESIS_JSON)?)),
+            Genesis::GOAT => Ok(ChainSpec::from_genesis(genesis_from_json(GOAT_GENESIS_JSON)?)),
             Genesis::Custom(json) => Ok(ChainSpec::from_genesis(genesis_from_json(json)?)),
         }
     }
