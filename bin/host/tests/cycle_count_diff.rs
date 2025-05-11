@@ -227,7 +227,8 @@ impl ExecutionHooks for Hook {
                         ),
                         row(
                             "Prover Gas",
-                            execution_report.gas.unwrap_or_default(),
+                            // execution_report.gas.unwrap_or_default(),
+                            0,
                             current_dev_stats.prover_gas,
                         ),
                     ],

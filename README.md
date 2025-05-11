@@ -12,7 +12,7 @@ Required
 
 - [Rust](https://www.rust-lang.org/tools/install) 
 - [zkMIPS toolchain](https://docs.zkm.io/introduction/installation.html)
-- Register on [Alchemy](https://www.alchemy.com/) or [Chainstack](https://chainstack.com/)​​ to get ​​`rpc url`​ and `ws url`​.
+- Register on [Alchemy](https://www.alchemy.com/) or [Chainstack](https://chainstack.com/)​​ to get ​​`rpc url`​ and `ws url`​. But [Chainstack](https://chainstack.com/) does not support archival/historical `eth_getProof` calls.
 
 ### RPC Node Requirement
 
@@ -107,7 +107,7 @@ A good small block to test on for Ethereum mainnet is: `20526624`.
 
 ### State root mismatch
 
-This issue can be caused using an RPC provider that returns incorrect results from the `eth_getProof` endpoint. We have empirically observed such issues with many RPC providers. We recommend using [Alchemy](https://www.alchemy.com/) or [Chainstack](https://chainstack.com/).
+This issue can be caused using an RPC provider that returns incorrect results from the `eth_getProof` endpoint. We have empirically observed such issues with many RPC providers. We recommend using [Alchemy](https://www.alchemy.com/).
 
 # Reference
 
