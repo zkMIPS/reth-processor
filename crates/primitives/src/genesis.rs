@@ -37,6 +37,21 @@ impl TryFrom<u64> for Genesis {
     }
 }
 
+impl TryFrom<&Genesis> for u64 {
+    type Error = eyre::Error;
+
+    fn try_from(value: &Genesis) -> Result<Self, Self::Error> {
+        match value {
+            Genesis::Mainnet => Ok(1),
+            Genesis::OpMainnet => Ok(10),
+            Genesis::Linea => Ok(59144),
+            Genesis::Sepolia => Ok(11155111),
+            Genesis::GOAT => Ok(2345),
+            Genesis::Custom(_) => Err(eyre!("Custom genesis is not supported")),
+        }
+    }
+}
+
 impl TryFrom<&Genesis> for ChainSpec {
     type Error = eyre::Error;
 
