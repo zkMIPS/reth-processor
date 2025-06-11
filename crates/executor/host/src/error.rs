@@ -1,5 +1,5 @@
 use alloy_rpc_types::ConversionError;
-use alloy_transport::TransportError;
+use alloy_transport::{RpcError, TransportError, TransportErrorKind};
 use mpt::FromProofError;
 use reth_errors::BlockExecutionError;
 use revm_primitives::B256;
@@ -26,4 +26,15 @@ pub enum Error {
     StateRootMismatch(B256, B256),
     #[error("Failed to read the genesis file: {}", .0)]
     FailedToReadGenesisFile(#[from] std::io::Error),
+    #[error("custom error: {0}")]
+    Custom(String),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum SpawnedTaskError {
+    #[error("rpc error: {0}")]
+    Rpc(#[from] RpcError<TransportErrorKind>),
+
+    #[error("proof conversion error: {0}")]
+    Proof(#[from] FromProofError),
 }

@@ -12,9 +12,9 @@ use host_executor::{
 use provider::create_provider;
 use tracing::{error, info};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-use zkm_sdk::{include_elf, ProverClient};
 #[cfg(feature = "network_prover")]
 use zkm_sdk::NetworkProver;
+use zkm_sdk::{include_elf, ProverClient};
 
 mod cli;
 
@@ -69,7 +69,6 @@ async fn main() -> eyre::Result<()> {
         //     builder = builder.with_moongate_endpoint(endpoint)
     }
 
-
     #[cfg(feature = "network_prover")]
     let client = {
         let np = NetworkProver::from_env().map_err(|_| {
@@ -91,7 +90,7 @@ async fn main() -> eyre::Result<()> {
         eth_proofs_client,
         config,
     )
-        .await?;
+    .await?;
 
     info!("Latest block number: {}", http_provider.get_block_number().await?);
 

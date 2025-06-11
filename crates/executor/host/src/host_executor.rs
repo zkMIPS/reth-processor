@@ -1,5 +1,9 @@
 use std::{collections::BTreeSet, sync::Arc};
 
+use futures::future::try_join_all;
+use tokio::sync::Semaphore;
+
+use crate::{error::SpawnedTaskError, HostError};
 use alloy_consensus::{BlockHeader, Header, TxReceipt};
 use alloy_evm::EthEvmFactory;
 use alloy_primitives::{Bloom, Sealable};
@@ -23,8 +27,6 @@ use reth_trie::KeccakKeyHasher;
 use revm::database::CacheDB;
 use revm_primitives::{Address, B256};
 use rpc_db::RpcDb;
-
-use crate::HostError;
 
 pub type EthHostExecutor = HostExecutor<EthEvmConfig<CustomEvmFactory<EthEvmFactory>>>;
 
@@ -71,7 +73,7 @@ impl<C: ConfigureEvm> HostExecutor<C> {
     ) -> Result<ClientExecutorInput<C::Primitives>, HostError>
     where
         C::Primitives: IntoPrimitives<N> + IntoInput + ValidateBlockPostExecution,
-        P: Provider<N> + Clone,
+        P: Provider<N> + Clone + 'static,
         N: Network,
     {
         // Fetch the current block and the previous block from the provider.
@@ -108,7 +110,7 @@ impl<C: ConfigureEvm> HostExecutor<C> {
             .try_into_recovered()
             .map_err(|_| HostError::FailedToRecoverSenders)
             .unwrap();
-
+        // TODO: the most time-consuming part
         let execution_output = block_executor.execute(&block)?;
 
         // Validate the block post execution.
@@ -134,40 +136,81 @@ impl<C: ConfigureEvm> HostExecutor<C> {
 
         // For every account we touched, fetch the storage proofs for all the slots we touched.
         tracing::info!("fetching storage proofs");
-        let mut before_storage_proofs = Vec::new();
-        let mut after_storage_proofs = Vec::new();
 
-        for (address, used_keys) in state_requests.iter() {
+        // max_concurrency
+        // TODO: use configurable concurrency limit
+        let semaphore = Arc::new(Semaphore::new(32));
+
+        let before_tasks = state_requests.iter().map(|(address, used_keys)| {
+            let permit = semaphore.clone().acquire_owned();
+            let provider = provider.clone();
+            let address = *address;
+
+            let keys = {
+                let modified_keys = executor_outcome
+                    .state()
+                    .state
+                    .get(&address)
+                    .map(|account| {
+                        account.storage.keys().map(|k| B256::from(*k)).collect::<BTreeSet<_>>()
+                    })
+                    .unwrap_or_default();
+
+                used_keys
+                    .iter()
+                    .map(|k| B256::from(*k))
+                    .chain(modified_keys.into_iter())
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            };
+
+            tokio::spawn(async move {
+                let _permit = permit.await;
+                let proof =
+                    provider.get_proof(address, keys).block_id((block_number - 1).into()).await?;
+                let converted = eip1186_proof_to_account_proof(proof);
+                Ok::<_, SpawnedTaskError>(converted)
+            })
+        });
+
+        let after_tasks = state_requests.iter().map(|(address, _)| {
+            let permit = semaphore.clone().acquire_owned();
+            let provider = provider.clone();
+            let address = *address;
+
             let modified_keys = executor_outcome
                 .state()
                 .state
-                .get(address)
-                .map(|account| {
-                    account.storage.keys().map(|key| B256::from(*key)).collect::<BTreeSet<_>>()
-                })
-                .unwrap_or_default()
-                .into_iter()
-                .collect::<Vec<_>>();
+                .get(&address)
+                .map(|account| account.storage.keys().map(|k| B256::from(*k)).collect::<Vec<_>>())
+                .unwrap_or_default();
 
-            let keys = used_keys
-                .iter()
-                .map(|key| B256::from(*key))
-                .chain(modified_keys.clone().into_iter())
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
+            tokio::spawn(async move {
+                let _permit = permit.await;
+                let proof = provider
+                    .get_proof(address, modified_keys)
+                    .block_id(block_number.into())
+                    .await?;
+                let converted = eip1186_proof_to_account_proof(proof);
+                Ok::<_, SpawnedTaskError>(converted)
+            })
+        });
 
-            let storage_proof = provider
-                .get_proof(*address, keys.clone())
-                .block_id((block_number - 1).into())
-                .await?;
-            before_storage_proofs.push(eip1186_proof_to_account_proof(storage_proof));
+        let before_storage_proofs = try_join_all(before_tasks)
+            .await
+            .map_err(|e| HostError::Custom(format!("join error: {e}")))?
+            .into_iter()
+            .map(|res| res.map_err(|e| HostError::Custom(format!("task error: {e}"))))
+            .collect::<Result<Vec<_>, _>>()?;
+        let after_storage_proofs = try_join_all(after_tasks)
+            .await
+            .map_err(|e| HostError::Custom(format!("join error: {e}")))?
+            .into_iter()
+            .map(|res| res.map_err(|e| HostError::Custom(format!("task error: {e}"))))
+            .collect::<Result<Vec<_>, _>>()?;
 
-            let storage_proof =
-                provider.get_proof(*address, modified_keys).block_id((block_number).into()).await?;
-            after_storage_proofs.push(eip1186_proof_to_account_proof(storage_proof));
-        }
-
+        tracing::info!("Building Ethereum state from storage proofs");
         let state = EthereumState::from_transition_proofs(
             previous_block.header().state_root(),
             &before_storage_proofs.iter().map(|item| (item.address, item.clone())).collect(),

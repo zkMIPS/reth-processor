@@ -55,7 +55,7 @@ where
                 config.chain.id(),
                 config.prove_mode,
             )
-                .await?,
+            .await?,
         ));
     }
 
@@ -108,7 +108,10 @@ pub trait BlockExecutor<C: ExecutorComponents> {
                 )
                 .await?;
 
-            info!("Proof for block {} successfully generated! Proving took {:?}", client_input.current_block.number, proving_duration);
+            info!(
+                "Proof for block {} successfully generated! Proving took {:?}",
+                client_input.current_block.number, proving_duration
+            );
         } else {
             // Execute the block inside the zkVM.
             crate::utils::zkm_dump(&self.pk().elf, &stdin, client_input.current_block.number);
@@ -138,7 +141,7 @@ pub trait BlockExecutor<C: ExecutorComponents> {
 impl<C, P> BlockExecutor<C> for EitherExecutor<C, P>
 where
     C: ExecutorComponents,
-    P: Provider<C::Network> + Clone,
+    P: Provider<C::Network> + Clone + 'static,
 {
     async fn execute(&self, block_number: u64) -> eyre::Result<()> {
         match self {
@@ -203,7 +206,7 @@ where
             let (pk, vk) = cloned_client.setup(&elf);
             (pk, vk)
         })
-            .await?;
+        .await?;
 
         Ok(Self {
             provider,
@@ -229,7 +232,7 @@ where
 impl<C, P> BlockExecutor<C> for FullExecutor<C, P>
 where
     C: ExecutorComponents,
-    P: Provider<C::Network> + Clone,
+    P: Provider<C::Network> + Clone + 'static,
 {
     async fn execute(&self, block_number: u64) -> eyre::Result<()> {
         self.hooks.on_execution_start(block_number).await?;
@@ -346,7 +349,7 @@ where
             let (pk, vk) = cloned_client.setup(&elf);
             (pk, vk)
         })
-            .await?;
+        .await?;
 
         Ok(Self {
             cache_dir,
@@ -370,7 +373,7 @@ where
             self.chain_id,
             block_number,
         )?
-            .ok_or(eyre::eyre!("No cached input found"))?;
+        .ok_or(eyre::eyre!("No cached input found"))?;
 
         self.process_client(client_input, &self.hooks, self.prove_mode).await
     }
@@ -410,8 +413,8 @@ async fn execute_client<P: Prover<DefaultProverComponents> + 'static>(
             (stdin, result.map_err(|err| eyre::eyre!("{err}")))
         })
     })
-        .await
-        .map_err(|err| eyre::eyre!("{err}"))
+    .await
+    .map_err(|err| eyre::eyre!("{err}"))
 }
 
 fn try_load_input_from_cache<P: NodePrimitives + DeserializeOwned>(

@@ -80,7 +80,7 @@ where
     type Hooks = H;
 }
 
-pub(crate) trait MaybeProveWithCycles {
+pub trait MaybeProveWithCycles {
     async fn prove_with_cycles(
         &self,
         pk: &ZKMProvingKey,
