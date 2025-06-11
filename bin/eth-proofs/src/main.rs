@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{env, sync::Arc};
 
 use alloy_provider::{Provider, ProviderBuilder, WsConnect};
 use clap::Parser;
@@ -13,6 +13,8 @@ use provider::create_provider;
 use tracing::{error, info};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use zkm_sdk::{include_elf, ProverClient};
+#[cfg(feature = "network_prover")]
+use zkm_sdk::NetworkProver;
 
 mod cli;
 
@@ -67,8 +69,19 @@ async fn main() -> eyre::Result<()> {
         //     builder = builder.with_moongate_endpoint(endpoint)
     }
 
-    // let client = Arc::new(builder.build());
-    let client = Arc::new(ProverClient::new());
+
+    #[cfg(feature = "network_prover")]
+    let client = {
+        let np = NetworkProver::from_env().map_err(|_| {
+            eyre::eyre!("Failed to create NetworkProver from environment variables")
+        })?;
+        Arc::new(np)
+    };
+    #[cfg(not(feature = "network_prover"))]
+    let client = {
+        info!("Use local ProverClient");
+        Arc::new(ProverClient::new())
+    };
 
     let executor = FullExecutor::<EthExecutorComponents<_, _>, _>::try_new(
         http_provider.clone(),
@@ -78,7 +91,7 @@ async fn main() -> eyre::Result<()> {
         eth_proofs_client,
         config,
     )
-    .await?;
+        .await?;
 
     info!("Latest block number: {}", http_provider.get_block_number().await?);
 

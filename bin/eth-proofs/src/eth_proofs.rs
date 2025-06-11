@@ -83,14 +83,14 @@ impl EthProofsClient {
         &self,
         proof_bytes: &[u8],
         block_number: u64,
-        execution_report: &ExecutionReport,
+        cycles: u64,
         elapsed: f32,
         vk: &ZKMVerifyingKey,
     ) {
         let json = serde_json::json!({
             "proof": STANDARD.encode(proof_bytes),
             "block_number": block_number,
-            "proving_cycles": execution_report.total_instruction_count(),
+            "proving_cycles": cycles,
             "proving_time": (elapsed * 1000.0) as u64,
             "verifier_id": vk.bytes32(),
             "cluster_id": self.cluster_id,
@@ -138,17 +138,17 @@ impl ExecutionHooks for EthProofsClient {
         block_number: u64,
         proof_bytes: &[u8],
         vk: &ZKMVerifyingKey,
-        execution_report: &ExecutionReport,
+        cycles: Option<u64>,
         proving_duration: Duration,
     ) -> eyre::Result<()> {
         self.proved(
             proof_bytes,
             block_number,
-            execution_report,
+            cycles.ok_or_else(|| eyre!("The cycle count is required"))?,
             proving_duration.as_secs_f32(),
             vk,
         )
-        .await;
+            .await;
 
         Ok(())
     }

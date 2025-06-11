@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use alloy_evm::EthEvmFactory;
 use alloy_network::Ethereum;
 use alloy_provider::Network;
+use eyre::eyre;
 use guest_executor::{
     custom::CustomEvmFactory, IntoInput, IntoPrimitives, ValidateBlockPostExecution,
 };
@@ -14,13 +15,15 @@ use reth_optimism_evm::OpEvmConfig;
 use reth_optimism_primitives::OpPrimitives;
 use reth_primitives_traits::NodePrimitives;
 use serde::de::DeserializeOwned;
-use zkm_prover::components::DefaultProverComponents;
-use zkm_sdk::{Prover, ProverClient};
+use zkm_prover::{components::DefaultProverComponents, ZKMProvingKey};
+use zkm_sdk::{
+    NetworkProver, Prover, ProverClient, ZKMProofKind, ZKMProofWithPublicValues, ZKMStdin,
+};
 
 use crate::ExecutionHooks;
 
 pub trait ExecutorComponents {
-    type Prover: Prover<DefaultProverComponents> + 'static;
+    type Prover: Prover<DefaultProverComponents> + MaybeProveWithCycles + 'static;
 
     type Network: Network;
 
@@ -43,7 +46,7 @@ pub struct EthExecutorComponents<H, P = ProverClient> {
 impl<H, P> ExecutorComponents for EthExecutorComponents<H, P>
 where
     H: ExecutionHooks,
-    P: Prover<DefaultProverComponents> + 'static,
+    P: Prover<DefaultProverComponents> + MaybeProveWithCycles + 'static,
 {
     type Prover = P;
 
@@ -64,7 +67,7 @@ pub struct OpExecutorComponents<H, P = ProverClient> {
 impl<H, P> ExecutorComponents for OpExecutorComponents<H, P>
 where
     H: ExecutionHooks,
-    P: Prover<DefaultProverComponents> + 'static,
+    P: Prover<DefaultProverComponents> + MaybeProveWithCycles + 'static,
 {
     type Prover = P;
 
@@ -75,4 +78,53 @@ where
     type EvmConfig = OpEvmConfig;
 
     type Hooks = H;
+}
+
+pub(crate) trait MaybeProveWithCycles {
+    async fn prove_with_cycles(
+        &self,
+        pk: &ZKMProvingKey,
+        stdin: &ZKMStdin,
+        mode: ZKMProofKind,
+    ) -> Result<(ZKMProofWithPublicValues, Option<u64>), eyre::Error>;
+}
+
+impl MaybeProveWithCycles for ProverClient {
+    async fn prove_with_cycles(
+        &self,
+        pk: &ZKMProvingKey,
+        stdin: &ZKMStdin,
+        mode: ZKMProofKind,
+    ) -> Result<(ZKMProofWithPublicValues, Option<u64>), eyre::Error> {
+        let mut prove = self.prove(pk, stdin.clone());
+        prove = match mode {
+            ZKMProofKind::Core => prove.core(),
+            ZKMProofKind::Compressed => prove.compressed(),
+            ZKMProofKind::Groth16 => prove.groth16(),
+            ZKMProofKind::Plonk => prove.plonk(),
+        };
+        let proof = prove.run().map_err(|err| eyre!("{err}"))?;
+
+        Ok((proof, None))
+    }
+}
+
+impl MaybeProveWithCycles for NetworkProver {
+    async fn prove_with_cycles(
+        &self,
+        pk: &ZKMProvingKey,
+        stdin: &ZKMStdin,
+        mode: ZKMProofKind,
+    ) -> Result<(ZKMProofWithPublicValues, Option<u64>), eyre::Error> {
+        debug_assert!(
+            mode == ZKMProofKind::Compressed || mode == ZKMProofKind::Groth16,
+            "NetworkProver only supports Compressed and Groth16 proof modes"
+        );
+        let (proof, cycles) = self
+            .prove_with_cycles(&pk.elf, stdin.clone(), mode, None)
+            .await
+            .map_err(|err| eyre!("Proof failed: {err}"))?;
+
+        Ok((proof, Some(cycles)))
+    }
 }
