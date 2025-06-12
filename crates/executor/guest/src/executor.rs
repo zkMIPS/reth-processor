@@ -59,7 +59,10 @@ where
             WrapDatabaseRef(trie_db)
         });
 
-        let block_executor = BlockExecutor::new(self.evm_config.clone(), db, input.opcode_tracking);
+        let chain_id: u64 = (&input.genesis).try_into().expect("convert chain id err");
+
+        let block_executor =
+            BlockExecutor::new(self.evm_config.clone(), db, input.opcode_tracking, chain_id);
 
         let block = profile_report!(RECOVER_SENDERS, {
             C::Primitives::from_input_block(input.current_block.clone())
@@ -155,11 +158,16 @@ enum BlockExecutor<'a, C> {
 }
 
 impl<'a, C: ConfigureEvm> BlockExecutor<'a, C> {
-    fn new(strategy_factory: C, db: WrapDatabaseRef<TrieDB<'a>>, opcode_tracking: bool) -> Self {
+    fn new(
+        strategy_factory: C,
+        db: WrapDatabaseRef<TrieDB<'a>>,
+        opcode_tracking: bool,
+        chain_id: u64,
+    ) -> Self {
         if opcode_tracking {
             Self::OpcodeTracking(OpCodesTrackingBlockExecutor::new(strategy_factory, db))
         } else {
-            Self::Basic(BasicBlockExecutor::new(strategy_factory, db))
+            Self::Basic(BasicBlockExecutor::new(strategy_factory, db, Some(chain_id)))
         }
     }
 }

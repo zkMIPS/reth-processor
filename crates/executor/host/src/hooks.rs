@@ -28,6 +28,8 @@ pub trait ExecutionHooks: Send {
         &self,
         _block_number: u64,
         _proof_bytes: &[u8],
+        _public_values_bytes: &[u8],
+        _zkm_version: &str,
         _vk: &ZKMVerifyingKey,
         _execution_report: &ExecutionReport,
         _proving_duration: Duration,

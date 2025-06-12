@@ -94,7 +94,11 @@ impl<C: ConfigureEvm> HostExecutor<C> {
         tracing::info!("setting up the database for the block executor");
         let cache_db = CacheDB::new(rpc_db);
 
-        let block_executor = BasicBlockExecutor::new(self.evm_config.clone(), cache_db);
+        let chain_id: u64 = (&genesis).try_into().unwrap();
+        tracing::info!("chain id: {}", chain_id);
+
+        let block_executor =
+            BasicBlockExecutor::new(self.evm_config.clone(), cache_db, Some(chain_id));
 
         // Execute the block and fetch all the necessary data along the way.
         tracing::info!(

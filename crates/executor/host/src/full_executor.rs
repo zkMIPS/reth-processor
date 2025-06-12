@@ -121,11 +121,14 @@ pub trait BlockExecutor<C: ExecutorComponents> {
 
             let proving_duration = proving_start.elapsed();
             let proof_bytes = bincode::serialize(&proof.proof).unwrap();
+            let public_values_bytes = bincode::serialize(&proof.public_values).unwrap();
 
             hooks
                 .on_proving_end(
                     client_input.current_block.number,
                     &proof_bytes,
+                    &public_values_bytes,
+                    &proof.zkm_version,
                     self.vk().as_ref(),
                     &execution_report,
                     proving_duration,
