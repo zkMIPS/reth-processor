@@ -138,6 +138,7 @@ impl ExecutionHooks for EthProofsClient {
         block_number: u64,
         proof_bytes: &[u8],
         _public_values_bytes: &[u8],
+        _zkm_version: &str,
         vk: &ZKMVerifyingKey,
         execution_report: &ExecutionReport,
         proving_duration: Duration,

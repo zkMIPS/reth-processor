@@ -128,6 +128,7 @@ pub trait BlockExecutor<C: ExecutorComponents> {
                     client_input.current_block.number,
                     &proof_bytes,
                     &public_values_bytes,
+                    &proof.zkm_version,
                     self.vk().as_ref(),
                     &execution_report,
                     proving_duration,
