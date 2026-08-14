@@ -252,7 +252,7 @@ dependencies = [
 [[package]]
 name = "alloy-primitives"
 version = "1.4.1"
-source = "git+https://github.com/ziren-patches/core.git?branch=patch-alloy-primitives-1.4.1#59313700f710f1373a5b4cdc05c51dc3227d8064"
+source = "git+https://github.com/ziren-patches/core.git?branch=patch-alloy-primitives-1.4.1#0d034202c9977acd601399efdd9c30fd1c1a08a0"
 dependencies = [
  "alloy-rlp",
  "bytes",
@@ -894,6 +894,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake3"
+version = "1.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76ae7bad254120e9e4c63bafc385310756f90c484eac0e36b8317cf09cb92a77"
+dependencies = [
+ "arrayref",
+ "arrayvec",
+ "cc",
+ "cfg-if",
+ "constant_time_eq",
+ "cpufeatures 0.3.0",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -905,7 +919,7 @@ dependencies = [
 [[package]]
 name = "bls12_381"
 version = "0.8.0"
-source = "git+https://github.com/ziren-patches/bls12_381?branch=patch-0.8.0#bcf9397426410acc171ad625416b508dc913be8e"
+source = "git+https://github.com/ziren-patches/bls12_381?branch=patch-0.8.0#97b215f80e9bfab9ad6641e41b005b6d8e58f748"
 dependencies = [
  "cfg-if",
  "ff",
@@ -1056,7 +1070,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bb320cac8a0750d7f25280aa97b09c26edfe161164238ecbbb31092b079e735"
 dependencies = [
  "cfg-if",
- "cpufeatures",
+ "cpufeatures 0.2.17",
  "proptest",
  "serde_core",
 ]
@@ -1088,6 +1102,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "constant_time_eq"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1107,6 +1127,15 @@ name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "cpufeatures"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201"
 dependencies = [
  "libc",
 ]
@@ -1970,7 +1999,7 @@ dependencies = [
 [[package]]
 name = "k256"
 version = "0.13.4"
-source = "git+https://github.com/ziren-patches/elliptic-curves?branch=patch-k256-0.13.4#8266b228a39402a0ba68d644b7f26b85b5112fe3"
+source = "git+https://github.com/ziren-patches/elliptic-curves?branch=patch-k256-0.13.4#6ad84b9b604911c6f5dd353b88c04927d2739a32"
 dependencies = [
  "cfg-if",
  "ecdsa",
@@ -1988,7 +2017,7 @@ version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
 dependencies = [
- "cpufeatures",
+ "cpufeatures 0.2.17",
 ]
 
 [[package]]
@@ -2292,7 +2321,7 @@ dependencies = [
 [[package]]
 name = "p256"
 version = "0.13.2"
-source = "git+https://github.com/ziren-patches/elliptic-curves?branch=patch-p256-0.13.2#a6f1a1fb07020d00f627725a20dc336983be3946"
+source = "git+https://github.com/ziren-patches/elliptic-curves?branch=patch-p256-0.13.2#88d42225abcb639b9bd3a930ac5a14f2262541c8"
 dependencies = [
  "ecdsa",
  "elliptic-curve",
@@ -2597,7 +2626,7 @@ dependencies = [
 [[package]]
 name = "primeorder"
 version = "0.13.1"
-source = "git+https://github.com/ziren-patches/elliptic-curves?branch=patch-p256-0.13.2#a6f1a1fb07020d00f627725a20dc336983be3946"
+source = "git+https://github.com/ziren-patches/elliptic-curves?branch=patch-p256-0.13.2#88d42225abcb639b9bd3a930ac5a14f2262541c8"
 dependencies = [
  "elliptic-curve",
 ]
@@ -3713,7 +3742,7 @@ version = "0.10.9"
 source = "git+https://github.com/ziren-patches/RustCrypto-hashes?branch=patch-sha2-0.10.9#dbfdbd088ac7b55e03c0b9eb192278efe35d67dc"
 dependencies = [
  "cfg-if",
- "cpufeatures",
+ "cpufeatures 0.2.17",
  "digest 0.10.7",
 ]
 
@@ -3832,7 +3861,7 @@ dependencies = [
 [[package]]
 name = "substrate-bn"
 version = "0.6.0"
-source = "git+https://github.com/ziren-patches/bn?branch=patch-0.6.0#aba71380457d798039111e6cc0fdf2e0718c6766"
+source = "git+https://github.com/ziren-patches/bn?branch=patch-0.6.0#0dfeeb1b7bfc21941b6e4964d678abd094a54a6f"
 dependencies = [
  "bytemuck",
  "byteorder",
@@ -4448,8 +4477,8 @@ dependencies = [
 
 [[package]]
 name = "zkm-lib"
-version = "1.2.3"
-source = "git+https://github.com/ProjectZKM/Ziren#44c893854e3ff79afdfb561cd22e0bd6a5d3a385"
+version = "1.2.7"
+source = "git+https://github.com/ProjectZKM/Ziren?tag=v1.2.7#7dc2037c6ef99d5772c756556350698fad01c559"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -4461,10 +4490,11 @@ dependencies = [
 
 [[package]]
 name = "zkm-primitives"
-version = "1.2.3"
-source = "git+https://github.com/ProjectZKM/Ziren#44c893854e3ff79afdfb561cd22e0bd6a5d3a385"
+version = "1.2.7"
+source = "git+https://github.com/ProjectZKM/Ziren?tag=v1.2.7#7dc2037c6ef99d5772c756556350698fad01c559"
 dependencies = [
  "bincode",
+ "blake3",
  "hex",
  "lazy_static",
  "num-bigint 0.4.6",
@@ -4475,12 +4505,13 @@ dependencies = [
  "p3-symmetric",
  "serde",
  "sha2",
+ "tracing",
 ]
 
 [[package]]
 name = "zkm-zkvm"
-version = "1.2.3"
-source = "git+https://github.com/ProjectZKM/Ziren#44c893854e3ff79afdfb561cd22e0bd6a5d3a385"
+version = "1.2.7"
+source = "git+https://github.com/ProjectZKM/Ziren?tag=v1.2.7#7dc2037c6ef99d5772c756556350698fad01c559"
 dependencies = [
  "bincode",
  "cfg-if",
