@@ -71,6 +71,7 @@ op-alloy-network.workspace = true
 futures = "0.3.31"
 
 [dev-dependencies]
+serde_with = "3.12.0"
 alloy-primitives.workspace = true
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 serde.workspace = true

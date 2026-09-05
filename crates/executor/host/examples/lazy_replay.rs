@@ -10,6 +10,26 @@
 use std::{sync::Arc, time::Instant};
 
 use guest_executor::{executor::EthClientExecutor, io::EthClientExecutorInput};
+use serde::Deserialize;
+use serde_with::serde_as;
+
+/// The pre-lazy input layout (bincode is positional: no `nodes`, no
+/// `code_hashes`), so cached inputs from before the change can be replayed.
+#[serde_as]
+#[derive(Deserialize)]
+struct LegacyInput {
+    #[serde_as(
+        as = "reth_primitives_traits::serde_bincode_compat::Block<'_, reth_ethereum_primitives::TransactionSigned, alloy_consensus::Header>"
+    )]
+    current_block: alloy_consensus::Block<reth_ethereum_primitives::TransactionSigned>,
+    #[serde_as(as = "Vec<alloy_consensus::serde_bincode_compat::Header>")]
+    ancestor_headers: Vec<alloy_consensus::Header>,
+    parent_state: mpt::LegacyEthereumState,
+    bytecodes: Vec<revm_bytecode::Bytecode>,
+    genesis: primitives::genesis::Genesis,
+    custom_beneficiary: Option<alloy_primitives::Address>,
+    opcode_tracking: bool,
+}
 
 fn run(label: &str, input: EthClientExecutorInput) -> (alloy_consensus::Header, alloy_primitives::B256) {
     let executor = EthClientExecutor::eth(
@@ -25,7 +45,17 @@ fn run(label: &str, input: EthClientExecutorInput) -> (alloy_consensus::Header, 
 fn main() {
     let path = std::env::args().nth(1).expect("usage: lazy_replay <input.bin>");
     let bytes = std::fs::read(&path).expect("read input");
-    let eager: EthClientExecutorInput = bincode::deserialize(&bytes).unwrap();
+    let legacy: LegacyInput = bincode::deserialize(&bytes).expect("legacy input layout");
+    let eager = EthClientExecutorInput {
+        current_block: legacy.current_block,
+        ancestor_headers: legacy.ancestor_headers,
+        parent_state: legacy.parent_state.into(),
+        bytecodes: legacy.bytecodes,
+        code_hashes: Vec::new(),
+        genesis: legacy.genesis,
+        custom_beneficiary: legacy.custom_beneficiary,
+        opcode_tracking: legacy.opcode_tracking,
+    };
 
     // The lazy form the host now ships.
     let mut lazy = eager.clone();

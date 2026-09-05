@@ -825,6 +825,51 @@ impl MptNode {
         }
     }
 
+    /// [`Self::resolve_path`] for a MUTATION: additionally resolves, at every
+    /// branch on the path with exactly two children, the child that is NOT on
+    /// the path.  If the operation is a delete that empties the on-path child,
+    /// that sibling becomes the branch's orphan, and the collapse must know
+    /// whether it is a leaf or an extension (to merge prefixes) or a branch (to
+    /// hang it under an extension) — a bare digest would be hung under an
+    /// extension unconditionally and change the root.
+    pub fn resolve_path_for_update<R>(&mut self, key_nibs: &[u8], resolver: &R) -> Result<(), Error>
+    where
+        R: Fn(&B256) -> Option<Vec<u8>>,
+    {
+        self.resolve_here(resolver)?;
+        match &mut self.data {
+            MptNodeData::Null | MptNodeData::Leaf(_, _) | MptNodeData::Digest(_) => Ok(()),
+            MptNodeData::Branch(children) => {
+                let Some((i, tail)) = key_nibs.split_first() else { return Ok(()) };
+                let on_path = *i as usize;
+                let present: Vec<usize> =
+                    children.iter().enumerate().filter(|(_, c)| c.is_some()).map(|(j, _)| j).collect();
+                if present.len() == 2 && present.contains(&on_path) {
+                    let sibling = if present[0] == on_path { present[1] } else { present[0] };
+                    if let Some(node) = children[sibling].as_mut() {
+                        // Best effort: a sibling the witness does not carry
+                        // stays a digest — that is exactly what the eager
+                        // (host-built) trie holds there too.
+                        match node.resolve_here(resolver) {
+                            Ok(_) | Err(Error::NodeNotResolved(_)) => {}
+                            Err(e) => return Err(e),
+                        }
+                    }
+                }
+                match children[on_path] {
+                    Some(ref mut child) => child.resolve_path_for_update(tail, resolver),
+                    None => Ok(()),
+                }
+            }
+            MptNodeData::Extension(prefix, child) => {
+                match key_nibs.strip_prefix(prefix_nibs(prefix).as_slice()) {
+                    Some(tail) => child.resolve_path_for_update(tail, resolver),
+                    None => Ok(()),
+                }
+            }
+        }
+    }
+
     /// Resolve the (first) unresolved node with digest `digest` anywhere under
     /// this node.  Used when an operation fails with `NodeNotResolved` for a
     /// node OFF the key path — a branch collapsing after a delete needs its

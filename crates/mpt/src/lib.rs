@@ -30,6 +30,21 @@ pub struct EthereumState {
     pub nodes: HashMap<B256, Vec<u8>>,
 }
 
+/// The pre-lazy wire layout of [`EthereumState`] (no `nodes` field).  bincode
+/// is positional, so inputs cached before the lazy witness landed can only be
+/// read through this mirror; `From` gives the eager state back.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LegacyEthereumState {
+    pub state_trie: MptNode,
+    pub storage_tries: HashMap<B256, MptNode>,
+}
+
+impl From<LegacyEthereumState> for EthereumState {
+    fn from(l: LegacyEthereumState) -> Self {
+        Self { state_trie: l.state_trie, storage_tries: l.storage_tries, nodes: HashMap::default() }
+    }
+}
+
 impl EthereumState {
     /// Builds Ethereum state tries from relevant proofs before and after a state transition.
     pub fn from_transition_proofs(
@@ -180,7 +195,7 @@ impl EthereumState {
         mut op: impl FnMut(&mut MptNode) -> Result<R, Error>,
     ) -> Result<R, Error> {
         let resolver = |d: &B256| nodes.get(d).cloned();
-        trie.resolve_path(&mpt::to_nibs(key), &resolver)?;
+        trie.resolve_path_for_update(&mpt::to_nibs(key), &resolver)?;
         loop {
             match op(trie) {
                 Err(Error::NodeNotResolved(digest)) => {
@@ -362,5 +377,95 @@ mod tests {
             state.state_trie.get_rlp::<TrieAccount>(hashed_address.as_slice()).unwrap().unwrap();
         assert_eq!(account.balance, U256::from(2));
         assert_eq!(account.storage_root, storage_root);
+    }
+}
+
+#[cfg(test)]
+mod lazy_tests {
+    use super::*;
+    use alloy_primitives::{keccak256, U256};
+
+    fn key(i: u64) -> B256 {
+        keccak256(i.to_be_bytes())
+    }
+
+    /// Eager trie with `n` accounts; account `i` owns `i % 4` storage slots.
+    fn eager_state(n: u64) -> EthereumState {
+        let mut st = EthereumState::default();
+        for i in 0..n {
+            let ha = key(i);
+            let mut storage_root = EMPTY_ROOT_HASH;
+            if i % 4 != 0 {
+                let trie = st.storage_tries.entry(ha).or_default();
+                for j in 0..(i % 4) {
+                    trie.insert_rlp(key(1_000_000 + i * 16 + j).as_slice(), U256::from(j + 7)).unwrap();
+                }
+                storage_root = trie.hash();
+            }
+            let acc = TrieAccount {
+                nonce: i,
+                balance: U256::from(i * 1000),
+                storage_root,
+                code_hash: keccak256(i.to_le_bytes()),
+            };
+            st.state_trie.insert_rlp(ha.as_slice(), acc).unwrap();
+        }
+        st
+    }
+
+    #[test]
+    fn lazy_reads_match_eager() {
+        let eager = eager_state(300);
+        let mut lazy = eager.to_witness();
+        assert_eq!(lazy.state_root(), eager.state_root());
+        for i in 0..300u64 {
+            let ha = key(i);
+            let e = eager.state_trie.get_rlp::<TrieAccount>(ha.as_slice()).unwrap();
+            let l = lazy.account(&ha).unwrap();
+            assert_eq!(e, l, "account {i}");
+            for j in 0..(i % 4) {
+                let slot = key(1_000_000 + i * 16 + j);
+                let e = eager.storage_tries[&ha].get_rlp::<U256>(slot.as_slice()).unwrap();
+                let l = lazy.storage::<U256>(&ha, slot.as_slice()).unwrap();
+                assert_eq!(e, l, "slot {i}/{j}");
+            }
+        }
+        // A key that is not there resolves to None on both.
+        assert_eq!(lazy.account(&key(999_999)).unwrap(), None);
+    }
+
+    #[test]
+    fn lazy_update_matches_eager() {
+        use reth_trie::{HashedPostState, HashedStorage};
+        use alloy_primitives::map::B256Map;
+        use reth_primitives_traits::Account;
+
+        let mut eager = eager_state(300);
+        let mut lazy = eager.to_witness();
+
+        let mut post = HashedPostState::default();
+        for i in (0..300u64).step_by(3) {
+            let ha = key(i);
+            // touch: change balance, write two slots (one new, one zeroed)
+            post.accounts.insert(
+                ha,
+                Some(Account { nonce: i + 1, balance: U256::from(i * 7 + 1), bytecode_hash: Some(keccak256(i.to_le_bytes())) }),
+            );
+            let mut hs = HashedStorage::new(false);
+            hs.storage.insert(key(1_000_000 + i * 16), U256::ZERO); // delete first slot if present
+            hs.storage.insert(key(2_000_000 + i), U256::from(42u64)); // new slot
+            post.storages.insert(ha, hs);
+        }
+        // delete a few accounts outright
+        for i in [5u64, 50, 150] {
+            post.accounts.insert(key(i), None);
+        }
+        // brand-new account
+        post.accounts.insert(key(777_777), Some(Account { nonce: 1, balance: U256::from(1u64), bytecode_hash: None }));
+        let _unused: B256Map<()> = Default::default();
+
+        eager.update(&post);
+        lazy.update(&post);
+        assert_eq!(lazy.state_root(), eager.state_root(), "post-state roots differ");
     }
 }
