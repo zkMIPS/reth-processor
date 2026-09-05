@@ -77,12 +77,12 @@ pub const KECCAK_EMPTY: B256 =
 ///
 /// # TODO
 /// - Consider switching the return type to `B256` for consistency with other parts of the codebase.
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
-pub static STATS_RESOLVED: AtomicU64 = AtomicU64::new(0);
-pub static STATS_DECODED_BYTES: AtomicU64 = AtomicU64::new(0);
-pub static STATS_ACCOUNT_CALLS: AtomicU64 = AtomicU64::new(0);
-pub static STATS_STORAGE_CALLS: AtomicU64 = AtomicU64::new(0);
+pub static STATS_RESOLVED: AtomicUsize = AtomicUsize::new(0);
+pub static STATS_DECODED_BYTES: AtomicUsize = AtomicUsize::new(0);
+pub static STATS_ACCOUNT_CALLS: AtomicUsize = AtomicUsize::new(0);
+pub static STATS_STORAGE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
 /// Aggregate the cycles of `f` under `name` in the zkVM execution report
 /// (`cycle-tracker-report-*`); a plain call natively.
@@ -830,7 +830,7 @@ impl MptNode {
         }
         let decoded = report("mpt.resolve.decode", || MptNode::decode(&bytes))?;
         STATS_RESOLVED.fetch_add(1, Ordering::Relaxed);
-        STATS_DECODED_BYTES.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+        STATS_DECODED_BYTES.fetch_add(bytes.len(), Ordering::Relaxed);
         self.data = decoded.data;
         self.invalidate_ref_cache();
         Ok(true)
