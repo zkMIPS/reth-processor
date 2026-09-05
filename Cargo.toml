@@ -47,10 +47,14 @@ primitives = { path = "./crates/primitives" }
 provider = { path = "./crates/provider" }
 
 # Ziren
-zkm-build = { git = "https://github.com/ProjectZKM/Ziren" }
-zkm-core-executor = { git = "https://github.com/ProjectZKM/Ziren" }
-zkm-prover = { git = "https://github.com/ProjectZKM/Ziren" }
-zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren" }
+# Pinned to the prover branch this deployment runs, not the repo default
+# (`main`): the GPU prover server is built from the coupled
+# `ziren-gpu:feat/gpu-basefold-primitives-2` <-> `Ziren:feat/upgrade-plonky3`
+# pair, and a host/GPU mismatch does not compile.
+zkm-build = { git = "https://github.com/ProjectZKM/Ziren", branch = "feat/upgrade-plonky3" }
+zkm-core-executor = { git = "https://github.com/ProjectZKM/Ziren", branch = "feat/upgrade-plonky3" }
+zkm-prover = { git = "https://github.com/ProjectZKM/Ziren", branch = "feat/upgrade-plonky3" }
+zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren", branch = "feat/upgrade-plonky3" }
 
 # reth
 reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.3", default-features = false }
