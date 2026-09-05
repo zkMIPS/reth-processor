@@ -22,7 +22,7 @@
 use std::sync::Mutex;
 
 use alloc::boxed::Box;
-use alloy_primitives::{b256, map::HashMap, B256};
+use alloy_primitives::{b256, map::HashMap, Bytes, B256};
 use alloy_rlp::Encodable;
 use core::{
     cmp,
@@ -367,6 +367,11 @@ fn take_item<'a>(buf: &mut &'a [u8]) -> Result<(alloy_rlp::Header, &'a [u8]), al
 /// branch) from the front of `buf`, walking each list exactly once.
 fn decode_node(buf: &mut &[u8]) -> Result<MptNode, alloy_rlp::Error> {
     let (header, payload) = take_item(buf)?;
+    decode_item(header, payload)
+}
+
+/// Decode a node whose RLP item has already been split off.
+fn decode_item(header: alloy_rlp::Header, payload: &[u8]) -> Result<MptNode, alloy_rlp::Error> {
     if !header.list {
         return match payload.len() {
             0 => Ok(MptNodeData::Null.into()),
@@ -404,13 +409,10 @@ fn decode_node(buf: &mut &[u8]) -> Result<MptNode, alloy_rlp::Error> {
         17 => {
             let mut children: [Option<Box<MptNode>>; 16] = Default::default();
             for child in children.iter_mut() {
-                // Peek: an empty string is an absent child.
-                let mut peek = rest;
-                let (h, _) = take_item(&mut peek)?;
-                if !h.list && h.payload_length == 0 {
-                    rest = peek;
-                } else {
-                    *child = Some(Box::new(decode_node(&mut rest)?));
+                let (h, item) = take_item(&mut rest)?;
+                // An empty string is an absent child.
+                if h.list || h.payload_length != 0 {
+                    *child = Some(Box::new(decode_item(h, item)?));
                 }
             }
             let (h, value) = take_item(&mut rest)?;
@@ -630,14 +632,14 @@ impl MptNode {
                 }
             }
             MptNodeData::Leaf(prefix, value) => {
-                if prefix_nibs(prefix) == key_nibs {
+                if strip_prefix_nibs(key_nibs, prefix) == Some(&[][..]) {
                     Ok(Some(value))
                 } else {
                     Ok(None)
                 }
             }
             MptNodeData::Extension(prefix, node) => {
-                if let Some(tail) = key_nibs.strip_prefix(prefix_nibs(prefix).as_slice()) {
+                if let Some(tail) = strip_prefix_nibs(key_nibs, prefix) {
                     node.get_internal(tail)
                 } else {
                     Ok(None)
@@ -906,7 +908,7 @@ impl MptNode {
     /// witness has no such node.
     pub fn resolve_here<R>(&mut self, resolver: &R) -> Result<bool, Error>
     where
-        R: Fn(&B256) -> Option<Vec<u8>>,
+        R: Fn(&B256) -> Option<Bytes>,
     {
         let digest = match &self.data {
             MptNodeData::Digest(d) => *d,
@@ -940,7 +942,7 @@ impl MptNode {
     /// hashed.
     pub fn resolve_path<R>(&mut self, key_nibs: &[u8], resolver: &R) -> Result<(), Error>
     where
-        R: Fn(&B256) -> Option<Vec<u8>>,
+        R: Fn(&B256) -> Option<Bytes>,
     {
         self.resolve_here(resolver)?;
         match &mut self.data {
@@ -953,7 +955,7 @@ impl MptNode {
                 None => Ok(()),
             },
             MptNodeData::Extension(prefix, child) => {
-                match key_nibs.strip_prefix(prefix_nibs(prefix).as_slice()) {
+                match strip_prefix_nibs(key_nibs, prefix) {
                     Some(tail) => child.resolve_path(tail, resolver),
                     None => Ok(()),
                 }
@@ -970,7 +972,7 @@ impl MptNode {
     /// extension unconditionally and change the root.
     pub fn resolve_path_for_update<R>(&mut self, key_nibs: &[u8], resolver: &R) -> Result<(), Error>
     where
-        R: Fn(&B256) -> Option<Vec<u8>>,
+        R: Fn(&B256) -> Option<Bytes>,
     {
         self.resolve_here(resolver)?;
         match &mut self.data {
@@ -998,7 +1000,7 @@ impl MptNode {
                 }
             }
             MptNodeData::Extension(prefix, child) => {
-                match key_nibs.strip_prefix(prefix_nibs(prefix).as_slice()) {
+                match strip_prefix_nibs(key_nibs, prefix) {
                     Some(tail) => child.resolve_path_for_update(tail, resolver),
                     None => Ok(()),
                 }
@@ -1012,7 +1014,7 @@ impl MptNode {
     /// one remaining sibling.  Returns whether the digest was found.
     pub fn resolve_digest<R>(&mut self, digest: &B256, resolver: &R) -> Result<bool, Error>
     where
-        R: Fn(&B256) -> Option<Vec<u8>>,
+        R: Fn(&B256) -> Option<Bytes>,
     {
         match &mut self.data {
             MptNodeData::Digest(d) if d == digest => self.resolve_here(resolver),
@@ -1175,6 +1177,29 @@ fn lcp(a: &[u8], b: &[u8]) -> usize {
         }
     }
     cmp::min(a.len(), b.len())
+}
+
+/// `key_nibs` with an extension/leaf `prefix` (compact-encoded nibbles)
+/// stripped off the front, without materialising the prefix's nibbles.
+fn strip_prefix_nibs<'a>(key_nibs: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
+    let (first, tail) = prefix.split_first()?;
+    let is_odd = first & (1 << 4) != 0;
+    let mut rest = key_nibs;
+    if is_odd {
+        let (k, r) = rest.split_first()?;
+        if *k != first & 0xf {
+            return None;
+        }
+        rest = r;
+    }
+    for byte in tail {
+        let (k, r) = rest.split_first_chunk::<2>()?;
+        if k[0] != byte >> 4 || k[1] != byte & 0xf {
+            return None;
+        }
+        rest = r;
+    }
+    Some(rest)
 }
 
 fn prefix_nibs(prefix: &[u8]) -> Vec<u8> {

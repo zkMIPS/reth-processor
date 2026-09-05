@@ -162,7 +162,7 @@ impl EthereumState {
         let nibs = mpt::to_nibs(hashed_address.as_slice());
         let nodes = &self.nodes;
         mpt::report("mpt.account.resolve_path", || {
-            self.state_trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).map(|b| b.to_vec()))
+            self.state_trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).cloned())
         })?;
         mpt::report("mpt.account.get", || {
             self.state_trie.get_rlp::<TrieAccount>(hashed_address.as_slice())
@@ -196,7 +196,7 @@ impl EthereumState {
         let nodes = &self.nodes;
         let trie = self.storage_tries.get_mut(hashed_address).unwrap();
         mpt::report("mpt.storage.resolve_path", || {
-            trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).map(|b| b.to_vec()))
+            trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).cloned())
         })?;
         mpt::report("mpt.storage.get", || trie.get_rlp::<T>(hashed_slot))
     }
@@ -210,7 +210,7 @@ impl EthereumState {
         key: &[u8],
         mut op: impl FnMut(&mut MptNode) -> Result<R, Error>,
     ) -> Result<R, Error> {
-        let resolver = |d: &B256| nodes.get(d).map(|b| b.to_vec());
+        let resolver = |d: &B256| nodes.get(d).cloned();
         trie.resolve_path_for_update(&mpt::to_nibs(key), &resolver)?;
         loop {
             match op(trie) {
