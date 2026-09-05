@@ -11,6 +11,7 @@ mod execution_witness;
 /// Module containing MPT code adapted from `zeth`.
 mod mpt;
 pub use mpt::Error;
+pub use mpt::{report as resolver_report, stats as resolver_stats};
 use mpt::{
     extend_trie_from_proof, mpt_from_proof, node_from_digest, parse_proof, proofs_to_tries,
     resolve_nodes, transition_proofs_to_tries, MptNode,
@@ -150,10 +151,15 @@ impl EthereumState {
 
     /// Resolve the state-trie path of `hashed_address` and read the account.
     pub fn account(&mut self, hashed_address: &B256) -> Result<Option<TrieAccount>, Error> {
+        mpt::STATS_ACCOUNT_CALLS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         let nibs = mpt::to_nibs(hashed_address.as_slice());
         let nodes = &self.nodes;
-        self.state_trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).cloned())?;
-        self.state_trie.get_rlp::<TrieAccount>(hashed_address.as_slice())
+        mpt::report("mpt.account.resolve_path", || {
+            self.state_trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).cloned())
+        })?;
+        mpt::report("mpt.account.get", || {
+            self.state_trie.get_rlp::<TrieAccount>(hashed_address.as_slice())
+        })
     }
 
     /// The storage trie of `hashed_address`, created from the account's
@@ -177,12 +183,15 @@ impl EthereumState {
         hashed_address: &B256,
         hashed_slot: &[u8],
     ) -> Result<Option<T>, Error> {
-        self.storage_trie_mut(hashed_address)?;
+        mpt::STATS_STORAGE_CALLS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        mpt::report("mpt.storage.trie_mut", || self.storage_trie_mut(hashed_address))?;
         let nibs = mpt::to_nibs(hashed_slot);
         let nodes = &self.nodes;
         let trie = self.storage_tries.get_mut(hashed_address).unwrap();
-        trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).cloned())?;
-        trie.get_rlp::<T>(hashed_slot)
+        mpt::report("mpt.storage.resolve_path", || {
+            trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).cloned())
+        })?;
+        mpt::report("mpt.storage.get", || trie.get_rlp::<T>(hashed_slot))
     }
 
     /// Run a mutating trie operation, resolving whatever digest it trips on
