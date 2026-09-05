@@ -46,6 +46,11 @@ pub struct ClientExecutorInput<P: NodePrimitives> {
     pub parent_state: WitnessState,
     /// Account bytecodes.
     pub bytecodes: Vec<Bytecode>,
+    /// The code hash the host claims for each entry of `bytecodes`; the guest
+    /// checks a claim the first time that code executes, so code that is only
+    /// shipped (touched accounts that never run) is never hashed.
+    #[serde(default)]
+    pub code_hashes: Vec<B256>,
     /// The genesis block, as a json string.
     pub genesis: Genesis,
     /// The genesis block, as a json string.
@@ -88,6 +93,11 @@ impl<P: NodePrimitives> WitnessInput for ClientExecutorInput<P> {
     }
 
     #[inline(always)]
+    fn code_hashes(&self) -> &[B256] {
+        &self.code_hashes
+    }
+
+    #[inline(always)]
     fn sealed_headers(&self) -> impl Iterator<Item = SealedHeader> {
         self.ancestor_headers
             .iter()
@@ -100,7 +110,10 @@ impl<P: NodePrimitives> WitnessInput for ClientExecutorInput<P> {
 pub struct TrieDB<'a> {
     inner: &'a ArenaState,
     block_hashes: HashMap<u64, B256>,
+    /// Keyed by the host's CLAIMED hash; a claim is trusted only after
+    /// `verified_code` records it.
     bytecode_by_hash: HashMap<B256, &'a Bytecode>,
+    verified_code: core::cell::RefCell<HashSet<B256>>,
 }
 
 impl<'a> TrieDB<'a> {
@@ -109,7 +122,7 @@ impl<'a> TrieDB<'a> {
         block_hashes: HashMap<u64, B256>,
         bytecode_by_hash: HashMap<B256, &'a Bytecode>,
     ) -> Self {
-        Self { inner, block_hashes, bytecode_by_hash }
+        Self { inner, block_hashes, bytecode_by_hash, verified_code: Default::default() }
     }
 }
 
@@ -144,7 +157,14 @@ impl DatabaseRef for TrieDB<'_> {
 
     /// Get account code by its hash.
     fn code_by_hash_ref(&self, hash: B256) -> Result<Bytecode, Self::Error> {
-        Ok(self.bytecode_by_hash.get(&hash).map(|code| (*code).clone()).unwrap())
+        let code = *self.bytecode_by_hash.get(&hash).expect("bytecode for hash must be provided");
+        // The claimed hash is checked the first time the code is used; a
+        // wrong claim aborts the execution.
+        if !self.verified_code.borrow().contains(&hash) {
+            assert_eq!(code.hash_slow(), hash, "bytecode does not match its claimed hash");
+            self.verified_code.borrow_mut().insert(hash);
+        }
+        Ok(code.clone())
     }
 
     /// Get storage value of address at index.
@@ -179,6 +199,9 @@ pub trait WitnessInput {
     /// Gets an iterator over account bytecodes.
     fn bytecodes(&self) -> impl Iterator<Item = &Bytecode>;
 
+    /// The claimed code hash of each bytecode, in the same order.
+    fn code_hashes(&self) -> &[B256];
+
     /// Gets an iterator over references to a consecutive, reverse-chronological block headers
     /// starting from the current block header.
     fn sealed_headers(&self) -> impl Iterator<Item = SealedHeader>;
@@ -204,8 +227,16 @@ pub trait WitnessInput {
             return Err(ClientError::MismatchedStateRoot);
         }
 
+        // Bytecodes are indexed by the host's claimed hash and verified on
+        // first use (see `TrieDB::code_by_hash_ref`); hashing every shipped
+        // contract up front was ~8 M cycles on a reth block, much of it for
+        // code that never runs.
+        let claimed = self.code_hashes();
+        if claimed.len() != self.bytecodes().count() {
+            return Err(ClientError::InvalidWitness("code_hashes/bytecodes length mismatch".into()));
+        }
         let bytecodes_by_hash =
-            self.bytecodes().map(|code| (code.hash_slow(), code)).collect::<HashMap<_, _>>();
+            claimed.iter().copied().zip(self.bytecodes()).collect::<HashMap<_, _>>();
 
         // Verify and build block hashes
         let mut block_hashes: HashMap<u64, B256> = HashMap::with_hasher(Default::default());
