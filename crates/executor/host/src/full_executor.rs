@@ -152,6 +152,13 @@ pub trait BlockExecutor<C: ExecutorComponents> {
 
             let cycles: u64 = execution_report.cycle_tracker.values().sum();
             info!("total cycles: {:?}", cycles);
+            // Every tracked span, including the aggregated
+            // `cycle-tracker-report-*` names, which the report's Display omits.
+            let mut spans: Vec<_> = execution_report.cycle_tracker.iter().collect();
+            spans.sort_by(|a, b| b.1.cmp(a.1));
+            for (name, cycles) in spans {
+                info!("cycle-tracker {name}: {cycles}");
+            }
 
             // Read the block hash.
             let block_hash = public_values.read::<B256>();

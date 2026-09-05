@@ -119,7 +119,11 @@ where
             return Err(ClientError::MismatchedStateRoot);
         }
         #[cfg(target_os = "zkvm")]
-        println!("mpt stats: {}", mpt::resolver_stats());
+        println!(
+            "mpt stats: {} witness_nodes={}",
+            mpt::resolver_stats(),
+            parent_state.witness_node_count()
+        );
 
         // Derive the block header.
         // Note: the receipts root and gas used are verified by `validate_block_post_execution`.

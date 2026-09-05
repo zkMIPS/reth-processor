@@ -1,6 +1,6 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
-use alloy_primitives::{keccak256, map::HashMap, Address, B256};
+use alloy_primitives::{keccak256, map::HashMap, Address, Bytes, B256};
 use alloy_rpc_types::EIP1186AccountProofResponse;
 use reth_trie::{AccountProof, HashedPostState, HashedStorage, TrieAccount, EMPTY_ROOT_HASH};
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,9 @@ pub struct EthereumState {
     /// a node is decoded — and its hash checked — only when a key path reaches
     /// it.  An empty map is the fully materialised (eager) form.
     #[serde(default)]
-    pub nodes: HashMap<B256, Vec<u8>>,
+    /// `Bytes` (not `Vec<u8>`): bincode decodes it with one memcpy per node;
+    /// a `Vec<u8>` goes through serde's per-element seq path in the guest.
+    pub nodes: HashMap<B256, Bytes>,
 }
 
 /// The pre-lazy wire layout of [`EthereumState`] (no `nodes` field).  bincode
@@ -128,7 +130,7 @@ impl EthereumState {
 
     /// Mutates state based on diffs provided in [`HashedPostState`].
     /// The lazy form: a root digest plus the witness nodes it can resolve.
-    pub fn from_witness(state_root: B256, nodes: HashMap<B256, Vec<u8>>) -> Self {
+    pub fn from_witness(state_root: B256, nodes: HashMap<B256, Bytes>) -> Self {
         Self { state_trie: node_from_digest(state_root), storage_tries: HashMap::default(), nodes }
     }
 
@@ -141,12 +143,17 @@ impl EthereumState {
         for trie in self.storage_tries.values() {
             trie.collect_witness_nodes(&mut pairs);
         }
-        let mut nodes: HashMap<B256, Vec<u8>> = HashMap::default();
+        let mut nodes: HashMap<B256, Bytes> = HashMap::default();
         nodes.reserve(pairs.len());
         for (hash, rlp) in pairs {
-            nodes.insert(hash, rlp);
+            nodes.insert(hash, rlp.into());
         }
         Self::from_witness(self.state_trie.hash(), nodes)
+    }
+
+    /// Number of witness nodes carried (lazy form); 0 for a materialised state.
+    pub fn witness_node_count(&self) -> usize {
+        self.nodes.len()
     }
 
     /// Resolve the state-trie path of `hashed_address` and read the account.
@@ -155,7 +162,7 @@ impl EthereumState {
         let nibs = mpt::to_nibs(hashed_address.as_slice());
         let nodes = &self.nodes;
         mpt::report("mpt.account.resolve_path", || {
-            self.state_trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).cloned())
+            self.state_trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).map(|b| b.to_vec()))
         })?;
         mpt::report("mpt.account.get", || {
             self.state_trie.get_rlp::<TrieAccount>(hashed_address.as_slice())
@@ -189,7 +196,7 @@ impl EthereumState {
         let nodes = &self.nodes;
         let trie = self.storage_tries.get_mut(hashed_address).unwrap();
         mpt::report("mpt.storage.resolve_path", || {
-            trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).cloned())
+            trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).map(|b| b.to_vec()))
         })?;
         mpt::report("mpt.storage.get", || trie.get_rlp::<T>(hashed_slot))
     }
@@ -199,11 +206,11 @@ impl EthereumState {
     /// is off the key path) until it succeeds.
     fn with_resolution<R>(
         trie: &mut MptNode,
-        nodes: &HashMap<B256, Vec<u8>>,
+        nodes: &HashMap<B256, Bytes>,
         key: &[u8],
         mut op: impl FnMut(&mut MptNode) -> Result<R, Error>,
     ) -> Result<R, Error> {
-        let resolver = |d: &B256| nodes.get(d).cloned();
+        let resolver = |d: &B256| nodes.get(d).map(|b| b.to_vec());
         trie.resolve_path_for_update(&mpt::to_nibs(key), &resolver)?;
         loop {
             match op(trie) {
@@ -420,6 +427,19 @@ mod lazy_tests {
             st.state_trie.insert_rlp(ha.as_slice(), acc).unwrap();
         }
         st
+    }
+
+    #[test]
+    fn decode_fast_matches_legacy_decoder() {
+        let state = eager_state(300);
+        let witness = state.to_witness();
+        assert!(!witness.nodes.is_empty());
+        for (hash, rlp) in &witness.nodes {
+            let fast = MptNode::decode_fast(rlp).unwrap();
+            let legacy = MptNode::decode(rlp).unwrap();
+            assert_eq!(fast, legacy, "node {hash}");
+            assert_eq!(fast.hash(), *hash);
+        }
     }
 
     #[test]

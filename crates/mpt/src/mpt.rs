@@ -348,6 +348,75 @@ impl Decodable for MptNode {
     }
 }
 
+/// Split one RLP item off the front of `buf`: its header and payload.
+#[inline]
+fn take_item<'a>(buf: &mut &'a [u8]) -> Result<(alloy_rlp::Header, &'a [u8]), alloy_rlp::Error> {
+    let header = alloy_rlp::Header::decode(buf)?;
+    let payload = buf.get(..header.payload_length).ok_or(alloy_rlp::Error::InputTooShort)?;
+    *buf = &buf[header.payload_length..];
+    Ok((header, payload))
+}
+
+/// Decode one node (string = null/digest, 2-list = leaf/extension, 17-list =
+/// branch) from the front of `buf`, walking each list exactly once.
+fn decode_node(buf: &mut &[u8]) -> Result<MptNode, alloy_rlp::Error> {
+    let (header, payload) = take_item(buf)?;
+    if !header.list {
+        return match payload.len() {
+            0 => Ok(MptNodeData::Null.into()),
+            32 => Ok(MptNodeData::Digest(B256::from_slice(payload)).into()),
+            _ => Err(alloy_rlp::Error::UnexpectedLength),
+        };
+    }
+    // Count the items (one header parse each) to tell a leaf/extension pair
+    // from a branch; the second walk decodes them.
+    let mut rest = payload;
+    let mut items = 0usize;
+    while !rest.is_empty() {
+        take_item(&mut rest)?;
+        items += 1;
+    }
+    let mut rest = payload;
+    match items {
+        2 => {
+            let (h, path) = take_item(&mut rest)?;
+            if h.list || path.is_empty() {
+                return Err(alloy_rlp::Error::UnexpectedList);
+            }
+            let path = path.to_vec();
+            if (path[0] & 0x20) == 0 {
+                let child = decode_node(&mut rest)?;
+                Ok(MptNodeData::Extension(path, Box::new(child)).into())
+            } else {
+                let (h, value) = take_item(&mut rest)?;
+                if h.list {
+                    return Err(alloy_rlp::Error::UnexpectedList);
+                }
+                Ok(MptNodeData::Leaf(path, value.to_vec()).into())
+            }
+        }
+        17 => {
+            let mut children: [Option<Box<MptNode>>; 16] = Default::default();
+            for child in children.iter_mut() {
+                // Peek: an empty string is an absent child.
+                let mut peek = rest;
+                let (h, _) = take_item(&mut peek)?;
+                if !h.list && h.payload_length == 0 {
+                    rest = peek;
+                } else {
+                    *child = Some(Box::new(decode_node(&mut rest)?));
+                }
+            }
+            let (h, value) = take_item(&mut rest)?;
+            if h.list || !value.is_empty() {
+                return Err(alloy_rlp::Error::Custom("branch node with value"));
+            }
+            Ok(MptNodeData::Branch(children).into())
+        }
+        _ => Err(alloy_rlp::Error::UnexpectedLength),
+    }
+}
+
 /// Represents a node in the sparse Merkle Patricia Trie (MPT).
 ///
 /// The [MptNode] type encapsulates the data and functionalities associated with a node in
@@ -376,6 +445,20 @@ impl MptNode {
     #[inline]
     pub fn decode(bytes: impl AsRef<[u8]>) -> Result<MptNode, Error> {
         rlp::decode(bytes.as_ref()).map_err(Error::from)
+    }
+
+    /// Single-pass RLP decode of a witness node.  Same result as
+    /// [`Self::decode`], but the `rlp`-crate decoder behind it rescans the
+    /// list from the start for every `at(i)` / `val_at(i)` — ~10x the header
+    /// parsing per branch — which is what the lazy resolver pays per node
+    /// inside the guest.
+    pub fn decode_fast(bytes: &[u8]) -> Result<MptNode, Error> {
+        let mut buf = bytes;
+        let node = decode_node(&mut buf)?;
+        if !buf.is_empty() {
+            return Err(alloy_rlp::Error::UnexpectedLength.into());
+        }
+        Ok(node)
     }
 
     /// Retrieves the underlying data of the node.
@@ -828,7 +911,7 @@ impl MptNode {
         if report("mpt.resolve.keccak", || keccak(&bytes) != digest.0) {
             return Err(Error::WitnessNodeMismatch(digest));
         }
-        let decoded = report("mpt.resolve.decode", || MptNode::decode(&bytes))?;
+        let decoded = report("mpt.resolve.decode", || MptNode::decode_fast(&bytes))?;
         STATS_RESOLVED.fetch_add(1, Ordering::Relaxed);
         STATS_DECODED_BYTES.fetch_add(bytes.len(), Ordering::Relaxed);
         self.data = decoded.data;
