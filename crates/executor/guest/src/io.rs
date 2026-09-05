@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use alloy_consensus::{Block, BlockHeader, Header};
-use alloy_primitives::map::HashMap;
+use alloy_primitives::map::{HashMap, HashSet};
 use itertools::Itertools;
 use mpt::{ArenaState, WitnessState};
 use primitives::genesis::Genesis;
