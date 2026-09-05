@@ -41,10 +41,31 @@ pub struct ExecutionWitnessRpcDb<P, N> {
 impl<P: Provider<N> + Clone, N: Network> ExecutionWitnessRpcDb<P, N> {
     /// Create a new [`ExecutionWitnessRpcDb`].
     pub async fn new(provider: P, block_number: u64, state_root: B256) -> Result<Self, RpcDbError> {
-        tracing::info!("Fetching execution witness for block {}", block_number);
-        let execution_witness = fetch_execution_witness(&provider, block_number).await?;
-        tracing::info!("Fetched execution witness for block done {}", block_number);
+        let execution_witness = Self::fetch_witness(&provider, block_number).await?;
+        Ok(Self::from_witness(provider, block_number, state_root, execution_witness))
+    }
 
+    /// Fetch the execution witness on its own.  It depends only on the block
+    /// number, so the host can run it concurrently with the block fetches
+    /// and pass the result to [`Self::from_witness`] once the parent's state
+    /// root is known — the three RPC round trips were strictly serial before.
+    pub async fn fetch_witness(
+        provider: &P,
+        block_number: u64,
+    ) -> Result<ExecutionWitness, RpcDbError> {
+        tracing::info!("Fetching execution witness for block {}", block_number);
+        let execution_witness = fetch_execution_witness(provider, block_number).await?;
+        tracing::info!("Fetched execution witness for block done {}", block_number);
+        Ok(execution_witness)
+    }
+
+    /// Build the database from an already-fetched witness.
+    pub fn from_witness(
+        provider: P,
+        block_number: u64,
+        state_root: B256,
+        execution_witness: ExecutionWitness,
+    ) -> Self {
         let state = EthereumState::from_execution_witness(&execution_witness, state_root);
 
         let codes = execution_witness
@@ -69,7 +90,7 @@ impl<P: Provider<N> + Clone, N: Network> ExecutionWitnessRpcDb<P, N> {
             phantom: PhantomData,
         };
 
-        Ok(db)
+        db
     }
 
     /// Fetches and merges a missing account proof into the cached pre-state trie.
