@@ -56,9 +56,14 @@ where
     ) -> Result<(Header, B256), ClientError> {
         let sealed_headers = input.sealed_headers().collect::<Vec<_>>();
 
+        // The parent state leaves the input for the duration of the block:
+        // the database resolves witness nodes lazily (behind a cell), and the
+        // post-state update below needs it back by value.
+        let parent_state = core::cell::RefCell::new(core::mem::take(&mut input.parent_state));
+
         // Initialize the witnessed database with verified storage proofs.
         let db = profile_report!(INIT_WITNESS_DB, {
-            let trie_db = input.witness_db(&sealed_headers).unwrap();
+            let trie_db = input.witness_db(&parent_state, &sealed_headers).unwrap();
             WrapDatabaseRef(trie_db)
         });
 
@@ -101,12 +106,13 @@ where
             vec![execution_output.result.requests],
         );
 
-        let parent_state_root = input.parent_state.state_root();
+        let mut parent_state = parent_state.into_inner();
+        let parent_state_root = parent_state.state_root();
 
         // Verify the state root.
         let state_root = profile_report!(COMPUTE_STATE_ROOT, {
-            input.parent_state.update(&executor_outcome.hash_state_slow::<KeccakKeyHasher>());
-            input.parent_state.state_root()
+            parent_state.update(&executor_outcome.hash_state_slow::<KeccakKeyHasher>());
+            parent_state.state_root()
         });
 
         if state_root != input.current_block.header().state_root() {

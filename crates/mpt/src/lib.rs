@@ -17,10 +17,17 @@ use mpt::{
 };
 
 /// Ethereum state trie and account storage tries.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct EthereumState {
     pub state_trie: MptNode,
     pub storage_tries: HashMap<B256, MptNode>,
+    /// The lazy witness: every trie node the host knows, keyed by keccak of
+    /// its RLP.  When non-empty, `state_trie` starts as a bare root digest and
+    /// storage tries are created on demand from each account's `storage_root`;
+    /// a node is decoded — and its hash checked — only when a key path reaches
+    /// it.  An empty map is the fully materialised (eager) form.
+    #[serde(default)]
+    pub nodes: HashMap<B256, Vec<u8>>,
 }
 
 impl EthereumState {
@@ -67,6 +74,7 @@ impl EthereumState {
         let state = EthereumState {
             state_trie: MptNode::from_account_proof(&proof.account_proof)?,
             storage_tries,
+            nodes: HashMap::default(),
         };
 
         Ok(state)
@@ -99,10 +107,92 @@ impl EthereumState {
         let (state_trie, storage_tries) =
             execution_witness::build_validated_tries(witness, pre_state_root).unwrap();
 
-        Self { state_trie, storage_tries }
+        Self { state_trie, storage_tries, nodes: HashMap::default() }
     }
 
     /// Mutates state based on diffs provided in [`HashedPostState`].
+    /// The lazy form: a root digest plus the witness nodes it can resolve.
+    pub fn from_witness(state_root: B256, nodes: HashMap<B256, Vec<u8>>) -> Self {
+        Self { state_trie: node_from_digest(state_root), storage_tries: HashMap::default(), nodes }
+    }
+
+    /// Convert a materialised state into its lazy witness form: the root
+    /// digest and every digest-referenced node of the state trie and of the
+    /// storage tries, as `(keccak, rlp)`.
+    pub fn to_witness(&self) -> Self {
+        let mut pairs = Vec::new();
+        self.state_trie.collect_witness_nodes(&mut pairs);
+        for trie in self.storage_tries.values() {
+            trie.collect_witness_nodes(&mut pairs);
+        }
+        let mut nodes: HashMap<B256, Vec<u8>> = HashMap::default();
+        nodes.reserve(pairs.len());
+        for (hash, rlp) in pairs {
+            nodes.insert(hash, rlp);
+        }
+        Self::from_witness(self.state_trie.hash(), nodes)
+    }
+
+    /// Resolve the state-trie path of `hashed_address` and read the account.
+    pub fn account(&mut self, hashed_address: &B256) -> Result<Option<TrieAccount>, Error> {
+        let nibs = mpt::to_nibs(hashed_address.as_slice());
+        let nodes = &self.nodes;
+        self.state_trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).cloned())?;
+        self.state_trie.get_rlp::<TrieAccount>(hashed_address.as_slice())
+    }
+
+    /// The storage trie of `hashed_address`, created from the account's
+    /// `storage_root` on first use in the lazy form.
+    pub fn storage_trie_mut(&mut self, hashed_address: &B256) -> Result<&mut MptNode, Error> {
+        if !self.storage_tries.contains_key(hashed_address) {
+            let root = self
+                .account(hashed_address)?
+                .map(|a| a.storage_root)
+                .unwrap_or(EMPTY_ROOT_HASH);
+            let trie =
+                if root == EMPTY_ROOT_HASH { MptNode::default() } else { node_from_digest(root) };
+            self.storage_tries.insert(*hashed_address, trie);
+        }
+        Ok(self.storage_tries.get_mut(hashed_address).unwrap())
+    }
+
+    /// Resolve the storage path and read the slot's RLP value.
+    pub fn storage<T: alloy_rlp::Decodable>(
+        &mut self,
+        hashed_address: &B256,
+        hashed_slot: &[u8],
+    ) -> Result<Option<T>, Error> {
+        self.storage_trie_mut(hashed_address)?;
+        let nibs = mpt::to_nibs(hashed_slot);
+        let nodes = &self.nodes;
+        let trie = self.storage_tries.get_mut(hashed_address).unwrap();
+        trie.resolve_path(&nibs, &|d: &B256| nodes.get(d).cloned())?;
+        trie.get_rlp::<T>(hashed_slot)
+    }
+
+    /// Run a mutating trie operation, resolving whatever digest it trips on
+    /// (a delete that collapses a branch needs the surviving sibling, which
+    /// is off the key path) until it succeeds.
+    fn with_resolution<R>(
+        trie: &mut MptNode,
+        nodes: &HashMap<B256, Vec<u8>>,
+        key: &[u8],
+        mut op: impl FnMut(&mut MptNode) -> Result<R, Error>,
+    ) -> Result<R, Error> {
+        let resolver = |d: &B256| nodes.get(d).cloned();
+        trie.resolve_path(&mpt::to_nibs(key), &resolver)?;
+        loop {
+            match op(trie) {
+                Err(Error::NodeNotResolved(digest)) => {
+                    if !trie.resolve_digest(&digest, &resolver)? {
+                        return Err(Error::NodeNotResolved(digest));
+                    }
+                }
+                other => return other,
+            }
+        }
+    }
+
     pub fn update(&mut self, post_state: &HashedPostState) {
         for (hashed_address, account) in post_state.accounts.iter() {
             match account {
@@ -116,7 +206,13 @@ impl EthereumState {
                         self.storage_root_after_update(*hashed_address, state_storage);
 
                     if account.is_empty() && storage_root == EMPTY_ROOT_HASH {
-                        self.state_trie.delete(hashed_address.as_slice()).unwrap();
+                        Self::with_resolution(
+                            &mut self.state_trie,
+                            &self.nodes,
+                            hashed_address.as_slice(),
+                            |t| t.delete(hashed_address.as_slice()),
+                        )
+                        .unwrap();
                         self.storage_tries.remove(hashed_address);
                         continue;
                     }
@@ -127,10 +223,22 @@ impl EthereumState {
                         storage_root,
                         code_hash: account.get_bytecode_hash(),
                     };
-                    self.state_trie.insert_rlp(hashed_address.as_slice(), state_account).unwrap();
+                    Self::with_resolution(
+                        &mut self.state_trie,
+                        &self.nodes,
+                        hashed_address.as_slice(),
+                        |t| t.insert_rlp(hashed_address.as_slice(), state_account.clone()),
+                    )
+                    .unwrap();
                 }
                 None => {
-                    self.state_trie.delete(hashed_address.as_slice()).unwrap();
+                    Self::with_resolution(
+                        &mut self.state_trie,
+                        &self.nodes,
+                        hashed_address.as_slice(),
+                        |t| t.delete(hashed_address.as_slice()),
+                    )
+                    .unwrap();
                     self.storage_tries.remove(hashed_address);
                 }
             }
@@ -148,14 +256,19 @@ impl EthereumState {
             }
 
             return self
-                .state_trie
-                .get_rlp::<TrieAccount>(hashed_address.as_slice())
+                .account(&hashed_address)
                 .unwrap()
                 .map(|account| account.storage_root)
                 .unwrap_or(EMPTY_ROOT_HASH)
         }
 
-        let storage_trie = self.storage_tries.entry(hashed_address).or_default();
+        // In the lazy form an untouched storage trie may not exist yet: seed
+        // it from the account's storage root before applying the writes.
+        if !self.storage_tries.contains_key(&hashed_address) {
+            let _ = self.storage_trie_mut(&hashed_address).unwrap();
+        }
+        let nodes = &self.nodes;
+        let storage_trie = self.storage_tries.get_mut(&hashed_address).unwrap();
 
         if state_storage.wiped {
             storage_trie.clear();
@@ -164,9 +277,10 @@ impl EthereumState {
         for (key, value) in state_storage.storage.iter() {
             let key = key.as_slice();
             if value.is_zero() {
-                storage_trie.delete(key).unwrap();
+                Self::with_resolution(storage_trie, nodes, key, |t| t.delete(key)).unwrap();
             } else {
-                storage_trie.insert_rlp(key, *value).unwrap();
+                Self::with_resolution(storage_trie, nodes, key, |t| t.insert_rlp(key, *value))
+                    .unwrap();
             }
         }
 
@@ -209,7 +323,7 @@ mod tests {
         let post_state =
             HashedPostState::default().with_accounts([(hashed_address, Some(Default::default()))]);
         let mut state =
-            EthereumState { state_trie: MptNode::default(), storage_tries: HashMap::default() };
+            EthereumState { state_trie: MptNode::default(), storage_tries: HashMap::default(), nodes: HashMap::default() };
 
         state.update(&post_state);
 
@@ -224,7 +338,7 @@ mod tests {
         let storage_root =
             b256!("3333333333333333333333333333333333333333333333333333333333333333");
         let mut state =
-            EthereumState { state_trie: MptNode::default(), storage_tries: HashMap::default() };
+            EthereumState { state_trie: MptNode::default(), storage_tries: HashMap::default(), nodes: HashMap::default() };
         state
             .state_trie
             .insert_rlp(

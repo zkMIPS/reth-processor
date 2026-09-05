@@ -235,7 +235,10 @@ impl<C: ConfigureEvm, CS> HostExecutor<C, CS> {
         let client_input = ClientExecutorInput {
             current_block: C::Primitives::into_input_block(current_block),
             ancestor_headers,
-            parent_state: state,
+            // Lazy witness form: root digest + (keccak, rlp) nodes; the guest
+            // decodes and hash-checks only the paths the block touches.
+            parent_state: state.to_witness(),
+            code_hashes: rpc_db.bytecodes().iter().map(|b| b.hash_slow()).collect(),
             bytecodes: rpc_db.bytecodes(),
             genesis,
             custom_beneficiary,

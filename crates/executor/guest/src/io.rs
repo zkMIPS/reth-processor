@@ -1,4 +1,4 @@
-use std::iter::once;
+use std::{cell::RefCell, collections::HashSet, iter::once};
 
 use alloy_consensus::{Block, BlockHeader, Header};
 use alloy_primitives::map::HashMap;
@@ -45,6 +45,12 @@ pub struct ClientExecutorInput<P: NodePrimitives> {
     pub parent_state: EthereumState,
     /// Account bytecodes.
     pub bytecodes: Vec<Bytecode>,
+    /// `keccak256(code)` of each entry of `bytecodes`, so the guest can index
+    /// them by hash without hashing every contract up front; a bytecode's hash
+    /// is checked the first time the EVM loads it (unexecuted code is never
+    /// hashed).  Empty (old inputs) means: hash everything eagerly.
+    #[serde(default)]
+    pub code_hashes: Vec<B256>,
     /// The genesis block, as a json string.
     pub genesis: Genesis,
     /// The genesis block, as a json string.
@@ -60,9 +66,14 @@ impl<P: NodePrimitives> ClientExecutorInput<P> {
         self.ancestor_headers.last().unwrap()
     }
 
-    /// Creates a [`WitnessDb`].
-    pub fn witness_db(&self, sealed_headers: &[SealedHeader]) -> Result<TrieDB<'_>, ClientError> {
-        <Self as WitnessInput>::witness_db(self, sealed_headers)
+    /// Creates a [`TrieDB`] over `state` (the parent state, taken out of the
+    /// input so the executor can update it after the block ran).
+    pub fn witness_db<'a>(
+        &'a self,
+        state: &'a RefCell<EthereumState>,
+        sealed_headers: &[SealedHeader],
+    ) -> Result<TrieDB<'a>, ClientError> {
+        <Self as WitnessInput>::witness_db(self, state, sealed_headers)
     }
 }
 
@@ -83,6 +94,11 @@ impl<P: NodePrimitives> WitnessInput for ClientExecutorInput<P> {
     }
 
     #[inline(always)]
+    fn code_hashes(&self) -> &[B256] {
+        &self.code_hashes
+    }
+
+    #[inline(always)]
     fn sealed_headers(&self) -> impl Iterator<Item = SealedHeader> {
         self.ancestor_headers
             .iter()
@@ -93,18 +109,24 @@ impl<P: NodePrimitives> WitnessInput for ClientExecutorInput<P> {
 
 #[derive(Debug)]
 pub struct TrieDB<'a> {
-    inner: &'a EthereumState,
+    /// The parent state.  Reads resolve witness nodes lazily (decoding and
+    /// hash-checking only the paths the block touches), which mutates the
+    /// trie behind `DatabaseRef`'s `&self` — hence the cell.
+    inner: &'a RefCell<EthereumState>,
     block_hashes: HashMap<u64, B256>,
+    /// Bytecodes by their CLAIMED hash; `verified_code` records which claims
+    /// have been checked (`hash_slow` on first load).
     bytecode_by_hash: HashMap<B256, &'a Bytecode>,
+    verified_code: RefCell<HashSet<B256>>,
 }
 
 impl<'a> TrieDB<'a> {
     pub fn new(
-        inner: &'a EthereumState,
+        inner: &'a RefCell<EthereumState>,
         block_hashes: HashMap<u64, B256>,
         bytecode_by_hash: HashMap<B256, &'a Bytecode>,
     ) -> Self {
-        Self { inner, block_hashes, bytecode_by_hash }
+        Self { inner, block_hashes, bytecode_by_hash, verified_code: RefCell::new(HashSet::new()) }
     }
 }
 
@@ -123,9 +145,8 @@ impl DatabaseRef for TrieDB<'_> {
         }
 
         let hashed_address = keccak256(address);
-        let hashed_address = hashed_address.as_slice();
 
-        let account_in_trie = self.inner.state_trie.get_rlp::<TrieAccount>(hashed_address).unwrap();
+        let account_in_trie = self.inner.borrow_mut().account(&hashed_address).unwrap();
 
         let account = account_in_trie.map(|account_in_trie| AccountInfo {
             balance: account_in_trie.balance,
@@ -139,22 +160,25 @@ impl DatabaseRef for TrieDB<'_> {
 
     /// Get account code by its hash.
     fn code_by_hash_ref(&self, hash: B256) -> Result<Bytecode, Self::Error> {
-        Ok(self.bytecode_by_hash.get(&hash).map(|code| (*code).clone()).unwrap())
+        let code = *self.bytecode_by_hash.get(&hash).expect("bytecode for hash must be provided");
+        // The claimed hash is trusted only once it has been checked; a
+        // contract that never executes is never hashed.
+        if !self.verified_code.borrow().contains(&hash) {
+            assert_eq!(code.hash_slow(), hash, "bytecode does not match its claimed hash");
+            self.verified_code.borrow_mut().insert(hash);
+        }
+        Ok(code.clone())
     }
 
     /// Get storage value of address at index.
     fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
         let hashed_address = keccak256(address);
-        let hashed_address = hashed_address.as_slice();
+        let hashed_slot = keccak256(index.to_be_bytes::<32>());
 
-        let storage_trie = self
+        Ok(self
             .inner
-            .storage_tries
-            .get(hashed_address)
-            .expect("A storage trie must be provided for each account");
-
-        Ok(storage_trie
-            .get_rlp::<U256>(keccak256(index.to_be_bytes::<32>()).as_slice())
+            .borrow_mut()
+            .storage::<U256>(&hashed_address, hashed_slot.as_slice())
             .expect("Can get from MPT")
             .unwrap_or_default())
     }
@@ -180,6 +204,9 @@ pub trait WitnessInput {
     /// Gets an iterator over account bytecodes.
     fn bytecodes(&self) -> impl Iterator<Item = &Bytecode>;
 
+    /// The claimed `keccak256` of each bytecode (empty: hash eagerly).
+    fn code_hashes(&self) -> &[B256];
+
     /// Gets an iterator over references to a consecutive, reverse-chronological block headers
     /// starting from the current block header.
     fn sealed_headers(&self) -> impl Iterator<Item = SealedHeader>;
@@ -192,24 +219,38 @@ pub trait WitnessInput {
     /// implementing this trait causes a zkVM run to cost over 5M cycles more. To avoid this, define
     /// a method inside the type that calls this trait method instead.
     #[inline(always)]
-    fn witness_db(&self, sealed_headers: &[SealedHeader]) -> Result<TrieDB<'_>, ClientError> {
-        let state = self.state();
-
-        if self.state_anchor() != state.state_root() {
-            return Err(ClientError::MismatchedStateRoot);
-        }
-
-        for (hashed_address, storage_trie) in state.storage_tries.iter() {
-            let account =
-                state.state_trie.get_rlp::<TrieAccount>(hashed_address.as_slice()).unwrap();
-            let storage_root = account.map_or(EMPTY_ROOT_HASH, |a| a.storage_root);
-            if storage_root != storage_trie.hash() {
-                return Err(ClientError::MismatchedStorageRoot);
+    fn witness_db<'a>(
+        &'a self,
+        state: &'a RefCell<EthereumState>,
+        sealed_headers: &[SealedHeader],
+    ) -> Result<TrieDB<'a>, ClientError> {
+        // The parent state root anchors everything: in the lazy form the root
+        // is a bare digest and every node is hash-checked when it is reached,
+        // so the per-storage-trie root check of the eager form is subsumed.
+        // Eager (fully materialised) states are still checked as before.
+        {
+            let st = state.borrow();
+            if self.state_anchor() != st.state_root() {
+                return Err(ClientError::MismatchedStateRoot);
+            }
+            if st.nodes.is_empty() {
+                for (hashed_address, storage_trie) in st.storage_tries.iter() {
+                    let account =
+                        st.state_trie.get_rlp::<TrieAccount>(hashed_address.as_slice()).unwrap();
+                    let storage_root = account.map_or(EMPTY_ROOT_HASH, |a| a.storage_root);
+                    if storage_root != storage_trie.hash() {
+                        return Err(ClientError::MismatchedStorageRoot);
+                    }
+                }
             }
         }
 
-        let bytecodes_by_hash =
-            self.bytecodes().map(|code| (code.hash_slow(), code)).collect::<HashMap<_, _>>();
+        let claimed = self.code_hashes();
+        let bytecodes_by_hash = if claimed.is_empty() {
+            self.bytecodes().map(|code| (code.hash_slow(), code)).collect::<HashMap<_, _>>()
+        } else {
+            claimed.iter().copied().zip(self.bytecodes()).collect::<HashMap<_, _>>()
+        };
 
         // Verify and build block hashes
         let mut block_hashes: HashMap<u64, B256> = HashMap::with_hasher(Default::default());

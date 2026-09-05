@@ -141,6 +141,9 @@ pub enum Error {
     /// value provides details about the unresolved node.
     #[error("reached an unresolved node: {0:#}")]
     NodeNotResolved(B256),
+    /// A witness node's bytes do not hash to the digest that referenced them.
+    #[error("witness node does not match its digest: {0:#}")]
+    WitnessNodeMismatch(B256),
     /// Occurs when a value is unexpectedly found in a branch node.
     #[error("branch node with value")]
     ValueInBranch,
@@ -770,6 +773,111 @@ impl MptNode {
         Ok(true)
     }
 
+    /// Replace this node, if it is an unresolved [`MptNodeData::Digest`], with
+    /// the witness node the resolver holds for that digest.  The bytes are
+    /// keccak-checked against the digest first, so a resolved node is exactly
+    /// as trustworthy as the root that referenced it.  `Ok(false)` means the
+    /// node was not a digest (nothing to do); `NodeNotResolved` means the
+    /// witness has no such node.
+    pub fn resolve_here<R>(&mut self, resolver: &R) -> Result<bool, Error>
+    where
+        R: Fn(&B256) -> Option<Vec<u8>>,
+    {
+        let digest = match &self.data {
+            MptNodeData::Digest(d) => *d,
+            _ => return Ok(false),
+        };
+        let bytes = resolver(&digest).ok_or(Error::NodeNotResolved(digest))?;
+        if keccak(&bytes) != digest.0 {
+            return Err(Error::WitnessNodeMismatch(digest));
+        }
+        let decoded = MptNode::decode(&bytes)?;
+        self.data = decoded.data;
+        self.invalidate_ref_cache();
+        Ok(true)
+    }
+
+    /// Resolve every unresolved digest on the path `key_nibs` would follow, so
+    /// that a subsequent `get` / `insert` / `delete` of that key finds real
+    /// nodes.  Nodes off the path stay as digests: this is what makes the
+    /// witness trie lazy — only the paths a block touches are ever decoded or
+    /// hashed.
+    pub fn resolve_path<R>(&mut self, key_nibs: &[u8], resolver: &R) -> Result<(), Error>
+    where
+        R: Fn(&B256) -> Option<Vec<u8>>,
+    {
+        self.resolve_here(resolver)?;
+        match &mut self.data {
+            MptNodeData::Null | MptNodeData::Leaf(_, _) | MptNodeData::Digest(_) => Ok(()),
+            MptNodeData::Branch(children) => match key_nibs.split_first() {
+                Some((i, tail)) => match children[*i as usize] {
+                    Some(ref mut child) => child.resolve_path(tail, resolver),
+                    None => Ok(()),
+                },
+                None => Ok(()),
+            },
+            MptNodeData::Extension(prefix, child) => {
+                match key_nibs.strip_prefix(prefix_nibs(prefix).as_slice()) {
+                    Some(tail) => child.resolve_path(tail, resolver),
+                    None => Ok(()),
+                }
+            }
+        }
+    }
+
+    /// Resolve the (first) unresolved node with digest `digest` anywhere under
+    /// this node.  Used when an operation fails with `NodeNotResolved` for a
+    /// node OFF the key path — a branch collapsing after a delete needs its
+    /// one remaining sibling.  Returns whether the digest was found.
+    pub fn resolve_digest<R>(&mut self, digest: &B256, resolver: &R) -> Result<bool, Error>
+    where
+        R: Fn(&B256) -> Option<Vec<u8>>,
+    {
+        match &mut self.data {
+            MptNodeData::Digest(d) if d == digest => self.resolve_here(resolver),
+            MptNodeData::Null | MptNodeData::Leaf(_, _) | MptNodeData::Digest(_) => Ok(false),
+            MptNodeData::Branch(children) => {
+                for child in children.iter_mut().flatten() {
+                    if child.resolve_digest(digest, resolver)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            MptNodeData::Extension(_, child) => child.resolve_digest(digest, resolver),
+        }
+    }
+
+    /// Every node of this trie that lives behind a digest reference — i.e. is
+    /// a separate witness node rather than inlined in its parent's RLP — as
+    /// `(keccak, rlp)`, root first.  This is the host side of the lazy witness:
+    /// the guest gets these pairs and resolves them by digest on demand.
+    pub fn collect_witness_nodes(&self, out: &mut Vec<(B256, Vec<u8>)>) {
+        self.collect_witness_nodes_inner(out, true);
+    }
+
+    fn collect_witness_nodes_inner(&self, out: &mut Vec<(B256, Vec<u8>)>, is_root: bool) {
+        match &self.data {
+            MptNodeData::Null | MptNodeData::Digest(_) => return,
+            _ => {}
+        }
+        // Inlined children (encoded length < 32) travel inside the parent's
+        // RLP; only digest-referenced nodes (and the root) are witness nodes.
+        let encoded = alloy_rlp::encode(self);
+        if is_root || encoded.len() >= 32 {
+            out.push((B256::from(keccak(&encoded)), encoded));
+        }
+        match &self.data {
+            MptNodeData::Branch(children) => {
+                for child in children.iter().flatten() {
+                    child.collect_witness_nodes_inner(out, false);
+                }
+            }
+            MptNodeData::Extension(_, child) => child.collect_witness_nodes_inner(out, false),
+            _ => {}
+        }
+    }
+
     fn invalidate_ref_cache(&mut self) {
         self.cached_reference.lock().unwrap().take();
     }
@@ -1046,6 +1154,7 @@ pub fn proofs_to_tries(
         return Ok(EthereumState {
             state_trie: node_from_digest(state_root),
             storage_tries: HashMap::with_hasher(Default::default()),
+            nodes: HashMap::default(),
         });
     }
 
@@ -1110,7 +1219,7 @@ pub fn proofs_to_tries(
         return Err(FromProofError::MismatchedStateRoot(state_trie_hash, state_root));
     }
 
-    Ok(EthereumState { state_trie, storage_tries: storage })
+    Ok(EthereumState { state_trie, storage_tries: storage, nodes: HashMap::default() })
 }
 
 pub fn transition_proofs_to_tries(
@@ -1123,6 +1232,7 @@ pub fn transition_proofs_to_tries(
         return Ok(EthereumState {
             state_trie: node_from_digest(state_root),
             storage_tries: HashMap::with_hasher(Default::default()),
+            nodes: HashMap::default(),
         });
     }
 
@@ -1197,7 +1307,7 @@ pub fn transition_proofs_to_tries(
         return Err(FromProofError::MismatchedStateRoot(state_trie_hash, state_root));
     }
 
-    Ok(EthereumState { state_trie, storage_tries: storage })
+    Ok(EthereumState { state_trie, storage_tries: storage, nodes: HashMap::default() })
 }
 
 /// Adds all the leaf nodes of non-inclusion proofs to the nodes.
