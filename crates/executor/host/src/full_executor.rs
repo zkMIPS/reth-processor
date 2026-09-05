@@ -117,6 +117,12 @@ pub trait BlockExecutor<C: ExecutorComponents> {
             let proof_bytes = bincode::serialize(&proof_with_cycles.0.proof).unwrap();
             let public_values_bytes =
                 bincode::serialize(&proof_with_cycles.0.public_values).unwrap();
+            // Size census: dump the exact bytes that get submitted so the
+            // proof's composition can be measured offline.
+            if let Ok(path) = std::env::var("ZIREN_COMPRESS_PROOF_OUT") {
+                std::fs::write(&path, &proof_bytes)?;
+                info!("wrote {} proof bytes to {path}", proof_bytes.len());
+            }
 
             hooks
                 .on_proving_end(
