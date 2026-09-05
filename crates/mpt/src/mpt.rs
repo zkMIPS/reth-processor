@@ -921,7 +921,15 @@ impl MptNode {
         STATS_RESOLVED.fetch_add(1, Ordering::Relaxed);
         STATS_DECODED_BYTES.fetch_add(bytes.len(), Ordering::Relaxed);
         self.data = decoded.data;
-        self.invalidate_ref_cache();
+        // The reference is known and verified: a witness node's encoding is
+        // >= 32 bytes, so its reference IS the digest.  Caching it here means
+        // the state-root pass re-encodes and re-hashes only the nodes the
+        // block mutated, exactly like the eager trie after its hash pass.
+        if bytes.len() >= 32 {
+            *self.cached_reference.lock().unwrap() = Some(MptNodeReference::Digest(digest));
+        } else {
+            self.invalidate_ref_cache();
+        }
         Ok(true)
     }
 
