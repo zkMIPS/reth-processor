@@ -88,8 +88,14 @@ pub static STATS_STORAGE_CALLS: AtomicUsize = AtomicUsize::new(0);
 /// (`cycle-tracker-report-*`); a plain call natively.
 #[inline]
 pub fn report<T>(name: &str, f: impl FnOnce() -> T) -> T {
+    // Each span is two guest prints (~1 K cycles); ~30 K resolver spans cost
+    // ~50 M cycles on a reth block, so they stay off unless you are ranking.
+    const SPANS: bool = false;
     #[cfg(target_os = "zkvm")]
     {
+        if !SPANS {
+            return f();
+        }
         println!("cycle-tracker-report-start: {name}");
         let r = f();
         println!("cycle-tracker-report-end: {name}");
