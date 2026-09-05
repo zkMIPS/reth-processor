@@ -3,12 +3,11 @@ use std::iter::once;
 use alloy_consensus::{Block, BlockHeader, Header};
 use alloy_primitives::map::HashMap;
 use itertools::Itertools;
-use mpt::EthereumState;
+use mpt::{ArenaState, WitnessState};
 use primitives::genesis::Genesis;
 use reth_errors::ProviderError;
 use reth_ethereum_primitives::EthPrimitives;
 use reth_primitives_traits::{NodePrimitives, SealedHeader};
-use reth_trie::{TrieAccount, EMPTY_ROOT_HASH};
 use revm::{
     state::{AccountInfo, Bytecode},
     DatabaseRef,
@@ -41,8 +40,10 @@ pub struct ClientExecutorInput<P: NodePrimitives> {
     /// to provide the parent state root.
     #[serde_as(as = "Vec<alloy_consensus::serde_bincode_compat::Header>")]
     pub ancestor_headers: Vec<Header>,
-    /// Network state as of the parent block.
-    pub parent_state: EthereumState,
+    /// Network state as of the parent block, in witness form (root hashes and
+    /// preorder streams of raw RLP nodes); the guest materialises it into an
+    /// [`ArenaState`], checking every node against the digest that references it.
+    pub parent_state: WitnessState,
     /// Account bytecodes.
     pub bytecodes: Vec<Bytecode>,
     /// The genesis block, as a json string.
@@ -60,15 +61,19 @@ impl<P: NodePrimitives> ClientExecutorInput<P> {
         self.ancestor_headers.last().unwrap()
     }
 
-    /// Creates a [`WitnessDb`].
-    pub fn witness_db(&self, sealed_headers: &[SealedHeader]) -> Result<TrieDB<'_>, ClientError> {
-        <Self as WitnessInput>::witness_db(self, sealed_headers)
+    /// Creates a [`TrieDB`] over the materialised `state`.
+    pub fn witness_db<'a>(
+        &'a self,
+        state: &'a ArenaState,
+        sealed_headers: &[SealedHeader],
+    ) -> Result<TrieDB<'a>, ClientError> {
+        <Self as WitnessInput>::witness_db(self, state, sealed_headers)
     }
 }
 
 impl<P: NodePrimitives> WitnessInput for ClientExecutorInput<P> {
     #[inline(always)]
-    fn state(&self) -> &EthereumState {
+    fn state(&self) -> &WitnessState {
         &self.parent_state
     }
 
@@ -93,14 +98,14 @@ impl<P: NodePrimitives> WitnessInput for ClientExecutorInput<P> {
 
 #[derive(Debug)]
 pub struct TrieDB<'a> {
-    inner: &'a EthereumState,
+    inner: &'a ArenaState,
     block_hashes: HashMap<u64, B256>,
     bytecode_by_hash: HashMap<B256, &'a Bytecode>,
 }
 
 impl<'a> TrieDB<'a> {
     pub fn new(
-        inner: &'a EthereumState,
+        inner: &'a ArenaState,
         block_hashes: HashMap<u64, B256>,
         bytecode_by_hash: HashMap<B256, &'a Bytecode>,
     ) -> Self {
@@ -125,7 +130,7 @@ impl DatabaseRef for TrieDB<'_> {
         let hashed_address = keccak256(address);
         let hashed_address = hashed_address.as_slice();
 
-        let account_in_trie = self.inner.state_trie.get_rlp::<TrieAccount>(hashed_address).unwrap();
+        let account_in_trie = self.inner.account(hashed_address).unwrap();
 
         let account = account_in_trie.map(|account_in_trie| AccountInfo {
             balance: account_in_trie.balance,
@@ -145,16 +150,10 @@ impl DatabaseRef for TrieDB<'_> {
     /// Get storage value of address at index.
     fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
         let hashed_address = keccak256(address);
-        let hashed_address = hashed_address.as_slice();
 
-        let storage_trie = self
+        Ok(self
             .inner
-            .storage_tries
-            .get(hashed_address)
-            .expect("A storage trie must be provided for each account");
-
-        Ok(storage_trie
-            .get_rlp::<U256>(keccak256(index.to_be_bytes::<32>()).as_slice())
+            .storage(&hashed_address, keccak256(index.to_be_bytes::<32>()).as_slice())
             .expect("Can get from MPT")
             .unwrap_or_default())
     }
@@ -170,8 +169,8 @@ impl DatabaseRef for TrieDB<'_> {
 
 /// A trait for constructing [`WitnessDb`].
 pub trait WitnessInput {
-    /// Gets a reference to the state from which account info and storage slots are loaded.
-    fn state(&self) -> &EthereumState;
+    /// Gets the witness state from which account info and storage slots are loaded.
+    fn state(&self) -> &WitnessState;
 
     /// Gets the state trie root hash that the state referenced by
     /// [state()](trait.WitnessInput#tymethod.state) must conform to.
@@ -192,20 +191,17 @@ pub trait WitnessInput {
     /// implementing this trait causes a zkVM run to cost over 5M cycles more. To avoid this, define
     /// a method inside the type that calls this trait method instead.
     #[inline(always)]
-    fn witness_db(&self, sealed_headers: &[SealedHeader]) -> Result<TrieDB<'_>, ClientError> {
-        let state = self.state();
-
-        if self.state_anchor() != state.state_root() {
+    fn witness_db<'a>(
+        &'a self,
+        state: &'a ArenaState,
+        sealed_headers: &[SealedHeader],
+    ) -> Result<TrieDB<'a>, ClientError> {
+        // `state` was built from `self.state()`: every node keccak-checked
+        // against its parent's digest, the state trie against
+        // `state_root`, every storage trie against its account's storage
+        // root.  What remains is binding that root to the parent header.
+        if self.state_anchor() != self.state().state_root {
             return Err(ClientError::MismatchedStateRoot);
-        }
-
-        for (hashed_address, storage_trie) in state.storage_tries.iter() {
-            let account =
-                state.state_trie.get_rlp::<TrieAccount>(hashed_address.as_slice()).unwrap();
-            let storage_root = account.map_or(EMPTY_ROOT_HASH, |a| a.storage_root);
-            if storage_root != storage_trie.hash() {
-                return Err(ClientError::MismatchedStorageRoot);
-            }
         }
 
         let bytecodes_by_hash =

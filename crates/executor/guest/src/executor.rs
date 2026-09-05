@@ -52,15 +52,17 @@ where
 {
     pub fn execute(
         &self,
-        mut input: ClientExecutorInput<C::Primitives>,
+        input: ClientExecutorInput<C::Primitives>,
     ) -> Result<(Header, B256), ClientError> {
         let sealed_headers = input.sealed_headers().collect::<Vec<_>>();
 
-        // Initialize the witnessed database with verified storage proofs.
-        let db = profile_report!(INIT_WITNESS_DB, {
-            let trie_db = input.witness_db(&sealed_headers).unwrap();
-            WrapDatabaseRef(trie_db)
-        });
+        // Materialise the witnessed state (every node hash-checked) and wrap it
+        // as the execution database.
+        let mut state = profile_report!(INIT_WITNESS_DB, {
+            mpt::ArenaState::from_witness(&input.parent_state)
+                .map_err(|e| ClientError::InvalidWitness(e.to_string()))
+        })?;
+        let db = WrapDatabaseRef(input.witness_db(&state, &sealed_headers)?);
 
         let chain_id: u64 = (&input.genesis).try_into().expect("convert chain id err");
 
@@ -101,12 +103,12 @@ where
             vec![execution_output.result.requests],
         );
 
-        let parent_state_root = input.parent_state.state_root();
+        let parent_state_root = input.parent_state.state_root;
 
         // Verify the state root.
         let state_root = profile_report!(COMPUTE_STATE_ROOT, {
-            input.parent_state.update(&executor_outcome.hash_state_slow::<KeccakKeyHasher>());
-            input.parent_state.state_root()
+            state.update(&executor_outcome.hash_state_slow::<KeccakKeyHasher>());
+            state.state_root()
         });
 
         if state_root != input.current_block.header().state_root() {

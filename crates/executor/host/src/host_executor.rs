@@ -235,7 +235,9 @@ impl<C: ConfigureEvm, CS> HostExecutor<C, CS> {
         let client_input = ClientExecutorInput {
             current_block: C::Primitives::into_input_block(current_block),
             ancestor_headers,
-            parent_state: state,
+            // Witness form: root hashes + preorder streams of raw RLP nodes; the
+            // guest builds its arena tries from it, hash-checking every node.
+            parent_state: state.to_witness_state(),
             bytecodes: rpc_db.bytecodes(),
             genesis,
             custom_beneficiary,

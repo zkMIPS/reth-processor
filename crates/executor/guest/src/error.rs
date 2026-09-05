@@ -11,6 +11,8 @@ pub enum ClientError {
     MismatchedStateRoot,
     #[error("Mismatched storage root after executing the block")]
     MismatchedStorageRoot,
+    #[error("Invalid state witness: {0}")]
+    InvalidWitness(String),
     #[error("unknown chain ID: {}", .0)]
     UnknownChainId(u64),
     #[error("Missing bytecode for account {}", .0)]

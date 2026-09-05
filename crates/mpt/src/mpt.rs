@@ -141,6 +141,12 @@ pub enum Error {
     /// value provides details about the unresolved node.
     #[error("reached an unresolved node: {0:#}")]
     NodeNotResolved(B256),
+    /// A witness node's keccak does not match the digest that references it.
+    #[error("witness node does not match digest {0}")]
+    WitnessNodeMismatch(B256),
+    /// The witness node stream is malformed.
+    #[error("malformed witness stream: {0}")]
+    WitnessFormat(&'static str),
     /// Occurs when a value is unexpectedly found in a branch node.
     #[error("branch node with value")]
     ValueInBranch,
@@ -337,6 +343,12 @@ impl MptNode {
     #[inline]
     pub fn decode(bytes: impl AsRef<[u8]>) -> Result<MptNode, Error> {
         rlp::decode(bytes.as_ref()).map_err(Error::from)
+    }
+
+    /// Mutable access to the node data (tests plant unresolved digests with it).
+    pub(crate) fn data_mut(&mut self) -> &mut MptNodeData {
+        self.invalidate_ref_cache();
+        &mut self.data
     }
 
     /// Retrieves the underlying data of the node.
@@ -770,7 +782,7 @@ impl MptNode {
         Ok(true)
     }
 
-    fn invalidate_ref_cache(&mut self) {
+    pub(crate) fn invalidate_ref_cache(&mut self) {
         self.cached_reference.lock().unwrap().take();
     }
 
@@ -879,7 +891,7 @@ pub fn to_encoded_path(mut nibs: &[u8], is_leaf: bool) -> Vec<u8> {
 }
 
 /// Returns the length of the common prefix.
-fn lcp(a: &[u8], b: &[u8]) -> usize {
+pub(crate) fn lcp(a: &[u8], b: &[u8]) -> usize {
     for (i, (a, b)) in iter::zip(a, b).enumerate() {
         if a != b {
             return i;
@@ -888,7 +900,7 @@ fn lcp(a: &[u8], b: &[u8]) -> usize {
     cmp::min(a.len(), b.len())
 }
 
-fn prefix_nibs(prefix: &[u8]) -> Vec<u8> {
+pub(crate) fn prefix_nibs(prefix: &[u8]) -> Vec<u8> {
     let (extension, tail) = prefix.split_first().unwrap();
     // the first bit of the first nibble denotes the parity
     let is_odd = extension & (1 << 4) != 0;

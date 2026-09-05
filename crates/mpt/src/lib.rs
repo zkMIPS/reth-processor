@@ -10,6 +10,9 @@ mod execution_witness;
 
 /// Module containing MPT code adapted from `zeth`.
 mod mpt;
+/// Arena-backed trie built from a preorder RLP witness stream (the guest's form).
+mod arena;
+pub use arena::{witness_stream, ArenaState, ArenaTrie, WitnessState};
 pub use mpt::Error;
 use mpt::{
     extend_trie_from_proof, mpt_from_proof, node_from_digest, parse_proof, proofs_to_tries,
@@ -17,7 +20,7 @@ use mpt::{
 };
 
 /// Ethereum state trie and account storage tries.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EthereumState {
     pub state_trie: MptNode,
     pub storage_tries: HashMap<B256, MptNode>,
@@ -176,6 +179,23 @@ impl EthereumState {
     /// Computes the state root.
     pub fn state_root(&self) -> B256 {
         self.state_trie.hash()
+    }
+
+    /// The witness form the guest consumes: root hashes plus preorder streams
+    /// of raw RLP nodes for the state trie and every storage trie (sorted by
+    /// hashed address so the bytes are reproducible).
+    pub fn to_witness_state(&self) -> WitnessState {
+        let mut storage: Vec<(B256, B256, alloy_primitives::Bytes)> = self
+            .storage_tries
+            .iter()
+            .map(|(addr, trie)| (*addr, trie.hash(), witness_stream(trie)))
+            .collect();
+        storage.sort_by(|a, b| a.0.cmp(&b.0));
+        WitnessState {
+            state_root: self.state_trie.hash(),
+            state_nodes: witness_stream(&self.state_trie),
+            storage,
+        }
     }
 }
 
