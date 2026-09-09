@@ -4,7 +4,7 @@ use alloy_provider::{Provider, ProviderBuilder, WsConnect};
 use clap::Parser;
 use cli::Args;
 use eth_proofs::EthProofsClient;
-use futures::{channel::mpsc, future::ready, SinkExt, StreamExt};
+use futures::{channel::mpsc, future::ready, FutureExt, SinkExt, StreamExt};
 use host_executor::{
     alerting::AlertingClient, create_eth_block_execution_strategy_factory, EthExecutorComponents,
     FullExecutor,
@@ -99,12 +99,36 @@ async fn main() -> eyre::Result<()> {
         let alerting_client = alerting_client.clone();
         let max_lag = args.max_lag;
         tokio::spawn(async move {
-            let mut newest = 0u64;
-            while let Some(header) = stream.next().await {
-                let number = header.number;
-                newest = newest.max(number);
-                if max_lag > 0 && newest - number > max_lag {
-                    warn!("skipping block {number}: {} behind the newest header", newest - number);
+            // The subscription is only a wake-up: it says how far the chain
+            // is.  Which block to prepare next is a cursor that advances by
+            // `block_interval`, so falling behind never skips a block — the
+            // backlog is worked through in order (unless `max_lag` says to
+            // drop it).  A header stream that lags drops headers; the cursor
+            // does not.
+            let mut head = 0u64;
+            let mut next = 0u64;
+            loop {
+                if next == 0 || next > head {
+                    match stream.next().await {
+                        Some(header) => {
+                            head = head.max(header.number);
+                            if next == 0 {
+                                next = header.number;
+                            }
+                            continue;
+                        }
+                        None => break,
+                    }
+                }
+                // Absorb whatever headers are already queued so `head` is fresh.
+                while let Some(Some(header)) = stream.next().now_or_never() {
+                    head = head.max(header.number);
+                }
+
+                let number = next;
+                next += block_interval;
+                if max_lag > 0 && head - number > max_lag {
+                    warn!("skipping block {number}: {} behind the newest header", head - number);
                     continue;
                 }
 
