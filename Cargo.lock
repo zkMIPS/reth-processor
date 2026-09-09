@@ -10230,7 +10230,6 @@ dependencies = [
 [[package]]
 name = "zkm-build"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -10241,7 +10240,6 @@ dependencies = [
 [[package]]
 name = "zkm-core-executor"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "anyhow",
  "bincode",
@@ -10285,7 +10283,6 @@ dependencies = [
 [[package]]
 name = "zkm-core-jit"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "dynasmrt",
  "hashbrown 0.14.5",
@@ -10302,7 +10299,6 @@ dependencies = [
 [[package]]
 name = "zkm-core-machine"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -10354,7 +10350,6 @@ dependencies = [
 [[package]]
 name = "zkm-cuda"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "bincode",
  "ctrlc",
@@ -10372,7 +10367,6 @@ dependencies = [
 [[package]]
 name = "zkm-curves"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "cfg-if",
  "curve25519-dalek",
@@ -10396,7 +10390,6 @@ dependencies = [
 [[package]]
 name = "zkm-derive"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10419,7 +10412,6 @@ dependencies = [
 [[package]]
 name = "zkm-lib"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -10432,7 +10424,6 @@ dependencies = [
 [[package]]
 name = "zkm-pcs"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "arrayref",
  "bincode",
@@ -10479,7 +10470,6 @@ dependencies = [
 [[package]]
 name = "zkm-poly"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "itertools 0.13.0",
  "p3-field 0.5.1",
@@ -10506,7 +10496,6 @@ dependencies = [
 [[package]]
 name = "zkm-primitives"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "bincode",
  "hex",
@@ -10524,13 +10513,13 @@ dependencies = [
 [[package]]
 name = "zkm-prover"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "anyhow",
  "bincode",
  "clap",
  "dirs",
  "eyre",
+ "hex",
  "itertools 0.13.0",
  "lru 0.12.5",
  "num-bigint 0.4.6",
@@ -10542,6 +10531,7 @@ dependencies = [
  "p3-koala-bear 0.5.1",
  "p3-matrix 0.5.1",
  "p3-symmetric 0.5.1",
+ "p3-uni-stark",
  "p3-util 0.5.1",
  "rayon",
  "serde",
@@ -10557,12 +10547,12 @@ dependencies = [
  "zkm-recursion-compiler",
  "zkm-recursion-core",
  "zkm-recursion-gnark-ffi",
+ "zkm-recursion-jit",
 ]
 
 [[package]]
 name = "zkm-recursion-circuit"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "hashbrown 0.14.5",
  "itertools 0.13.0",
@@ -10595,7 +10585,6 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-compiler"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "backtrace",
  "itertools 0.13.0",
@@ -10616,7 +10605,6 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-core"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "backtrace",
  "bincode",
@@ -10655,7 +10643,6 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-derive"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -10664,7 +10651,6 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-gnark-ffi"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "anyhow",
  "bincode",
@@ -10686,9 +10672,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "zkm-recursion-jit"
+version = "2.0.0"
+dependencies = [
+ "dynasmrt",
+ "p3-field 0.5.1",
+ "p3-koala-bear 0.5.1",
+ "thiserror 1.0.69",
+ "tracing",
+ "zkm-recursion-core",
+]
+
+[[package]]
 name = "zkm-sdk"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "alloy-primitives",
  "alloy-signer",
@@ -10752,7 +10749,6 @@ dependencies = [
 [[package]]
 name = "zkm-zkvm"
 version = "2.0.0"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=feat%2Fupgrade-plonky3#a2642d7c49e0aea34f795fbe9efa533fd802bd0a"
 dependencies = [
  "bincode",
  "cfg-if",

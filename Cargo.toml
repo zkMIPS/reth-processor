@@ -144,3 +144,27 @@ bn = { git = "https://github.com/ziren-patches/bn", branch = "patch-0.6.0", pack
 k256 = { git = "https://github.com/ziren-patches/elliptic-curves", branch = "patch-k256-0.13.4" }
 p256 = { git = "https://github.com/ziren-patches/elliptic-curves", branch = "patch-p256-0.13.2" }
 alloy-primitives-v1-4-1 = { git = "https://github.com/ziren-patches/core.git", package = "alloy-primitives", branch = "patch-alloy-primitives-1.4.1" }
+
+# Host side of the prover: the SIBLING Ziren checkout (feat/upgrade-plonky3 tip),
+# the same tree the GPU server is built against, instead of the git rev the
+# lock last pinned.  The guest ELF is unaffected (bin/guest has its own graph).
+[patch."https://github.com/ProjectZKM/Ziren"]
+zkm-build = { path = "../Ziren/crates/build" }
+zkm-core-executor = { path = "../Ziren/crates/core/executor" }
+zkm-core-jit = { path = "../Ziren/crates/core/jit" }
+zkm-core-machine = { path = "../Ziren/crates/core/machine" }
+zkm-cuda = { path = "../Ziren/crates/cuda" }
+zkm-curves = { path = "../Ziren/crates/curves" }
+zkm-derive = { path = "../Ziren/crates/derive" }
+zkm-lib = { path = "../Ziren/crates/zkvm/lib" }
+zkm-pcs = { path = "../Ziren/crates/pcs" }
+zkm-poly = { path = "../Ziren/crates/poly" }
+zkm-primitives = { path = "../Ziren/crates/primitives" }
+zkm-prover = { path = "../Ziren/crates/prover" }
+zkm-recursion-circuit = { path = "../Ziren/crates/recursion/circuit" }
+zkm-recursion-compiler = { path = "../Ziren/crates/recursion/compiler" }
+zkm-recursion-core = { path = "../Ziren/crates/recursion/core" }
+zkm-recursion-derive = { path = "../Ziren/crates/recursion/derive" }
+zkm-recursion-gnark-ffi = { path = "../Ziren/crates/recursion/gnark-ffi" }
+zkm-sdk = { path = "../Ziren/crates/sdk" }
+zkm-zkvm = { path = "../Ziren/crates/zkvm/entrypoint" }
