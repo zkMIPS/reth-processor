@@ -4,13 +4,13 @@ use alloy_provider::{Provider, ProviderBuilder, WsConnect};
 use clap::Parser;
 use cli::Args;
 use eth_proofs::EthProofsClient;
-use futures::{future::ready, StreamExt};
+use futures::{channel::mpsc, future::ready, SinkExt, StreamExt};
 use host_executor::{
-    alerting::AlertingClient, create_eth_block_execution_strategy_factory, BlockExecutor,
-    EthExecutorComponents, FullExecutor,
+    alerting::AlertingClient, create_eth_block_execution_strategy_factory, EthExecutorComponents,
+    FullExecutor,
 };
 use provider::create_provider;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use zkm_sdk::{include_elf, ProverClient};
 
@@ -62,8 +62,9 @@ async fn main() -> eyre::Result<()> {
 
     // Subscribe to block headers.
     let subscription = ws_provider.subscribe_blocks().await?;
+    let block_interval = args.block_interval;
     let mut stream =
-        subscription.into_stream().filter(|h| ready(h.number % args.block_interval == 0));
+        subscription.into_stream().filter(move |h| ready(h.number % block_interval == 0));
 
     // let mut builder = ProverClient::builder().cuda();
     if let Some(_endpoint) = &args.moongate_endpoint {
@@ -85,19 +86,62 @@ async fn main() -> eyre::Result<()> {
 
     info!("Latest block number: {}", http_provider.get_block_number().await?);
 
-    while let Some(header) = stream.next().await {
-        // Wait for the block to be avaliable in the HTTP provider
-        executor.wait_for_block(header.number).await?;
+    // Two-stage pipeline.  The fetcher pulls headers off the subscription,
+    // fetches the block + witness and runs the native execution; the prover
+    // loop below consumes the prepared inputs one at a time.  Block N+1's
+    // fetch therefore overlaps block N's proof instead of leaving the cards
+    // idle for the RPC round trips.
+    let executor = Arc::new(executor);
+    let alerting_client = Arc::new(alerting_client);
+    let (mut tx, mut rx) = mpsc::channel(args.prefetch_depth.max(1));
+    let fetcher = {
+        let executor = executor.clone();
+        let alerting_client = alerting_client.clone();
+        let max_lag = args.max_lag;
+        tokio::spawn(async move {
+            let mut newest = 0u64;
+            while let Some(header) = stream.next().await {
+                let number = header.number;
+                newest = newest.max(number);
+                if max_lag > 0 && newest - number > max_lag {
+                    warn!("skipping block {number}: {} behind the newest header", newest - number);
+                    continue;
+                }
 
-        if let Err(err) = executor.execute(header.number).await {
-            let error_message = format!("Error handling block {}: {err}", header.number);
-            error!(error_message);
-
-            if let Some(alerting_client) = &alerting_client {
-                alerting_client.send_alert(error_message).await;
+                // Wait for the block to be avaliable in the HTTP provider
+                let prepared = match executor.wait_for_block(number).await {
+                    Ok(()) => executor.prepare(number).await,
+                    Err(err) => Err(err),
+                };
+                match prepared {
+                    Ok(client_input) => {
+                        if tx.send((number, client_input)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        report_error(&alerting_client, number, err).await;
+                    }
+                }
             }
+        })
+    };
+
+    while let Some((number, client_input)) = rx.next().await {
+        if let Err(err) = executor.prove_prepared(client_input).await {
+            report_error(&alerting_client, number, err).await;
         }
     }
+    fetcher.await?;
 
     Ok(())
+}
+
+async fn report_error(alerting_client: &Option<AlertingClient>, number: u64, err: eyre::Report) {
+    let error_message = format!("Error handling block {number}: {err}");
+    error!(error_message);
+
+    if let Some(alerting_client) = alerting_client {
+        alerting_client.send_alert(error_message).await;
+    }
 }

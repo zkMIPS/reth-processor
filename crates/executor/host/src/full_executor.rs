@@ -277,14 +277,15 @@ where
         }
         Ok(())
     }
-}
 
-impl<C, P> BlockExecutor<C> for FullExecutor<C, P>
-where
-    C: ExecutorComponents,
-    P: Provider<C::Network> + Clone + std::fmt::Debug,
-{
-    async fn execute(&self, block_number: u64) -> eyre::Result<()> {
+    /// Stage 1 of the block pipeline: fetch the block and its witness over RPC
+    /// and run the native execution that yields the guest input.  Host and
+    /// network work only, so a caller can run it for block N+1 while block N
+    /// is being proved.
+    pub async fn prepare(
+        &self,
+        block_number: u64,
+    ) -> eyre::Result<ClientExecutorInput<C::Primitives>> {
         self.hooks.on_execution_start(block_number).await?;
 
         let client_input_from_cache = self.config.cache_dir.as_ref().and_then(|cache_dir| {
@@ -339,9 +340,26 @@ where
         };
         info!("Block {} executed in {:?}", block_number, now.elapsed());
 
-        self.process_client(client_input, &self.hooks, self.config.prove_mode).await?;
+        Ok(client_input)
+    }
 
-        Ok(())
+    /// Stage 2 of the block pipeline: prove an input produced by [`Self::prepare`].
+    pub async fn prove_prepared(
+        &self,
+        client_input: ClientExecutorInput<C::Primitives>,
+    ) -> eyre::Result<()> {
+        self.process_client(client_input, &self.hooks, self.config.prove_mode).await
+    }
+}
+
+impl<C, P> BlockExecutor<C> for FullExecutor<C, P>
+where
+    C: ExecutorComponents,
+    P: Provider<C::Network> + Clone + std::fmt::Debug,
+{
+    async fn execute(&self, block_number: u64) -> eyre::Result<()> {
+        let client_input = self.prepare(block_number).await?;
+        self.prove_prepared(client_input).await
     }
 
     fn client(&self) -> Arc<C::Prover> {

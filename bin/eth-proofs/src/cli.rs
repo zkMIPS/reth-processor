@@ -28,6 +28,17 @@ pub struct Args {
     #[clap(long, default_value_t = 100)]
     pub block_interval: u64,
 
+    /// How many prepared blocks (fetched + natively executed) may wait for the
+    /// prover.  The fetch of block N+1 always overlaps the proof of block N;
+    /// this bounds how far ahead the fetcher runs.
+    #[clap(long, default_value_t = 1)]
+    pub prefetch_depth: usize,
+
+    /// Skip a block when it is more than this many blocks behind the newest
+    /// header seen (0 = never skip: prove every block the stream delivers).
+    #[clap(long, default_value_t = 0)]
+    pub max_lag: u64,
+
     /// ETH proofs endpoint.
     #[clap(long, env)]
     pub eth_proofs_endpoint: String,
