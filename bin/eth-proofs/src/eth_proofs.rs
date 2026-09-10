@@ -5,7 +5,7 @@ use eyre::eyre;
 use host_executor::ExecutionHooks;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
-use tracing::error;
+use tracing::{error, info};
 use zkm_sdk::{HashableKey, ZKMVerifyingKey};
 
 #[derive(Debug, Clone)]
@@ -113,8 +113,12 @@ impl EthProofsClient {
                 .map_err(|e| eyre!(e))
                 .and_then(|r| r.error_for_status().map_err(|e| eyre!(e)));
 
-            if let Err(err) = response {
-                error!("Failed to report proof proving: {}", err)
+            match response {
+                Ok(_) => info!(
+                    "Reported proved block {} to eth-proofs: {} cycles, {:.1} s",
+                    block_number, cycles, elapsed
+                ),
+                Err(err) => error!("Failed to report proof proved: {}", err),
             }
         });
     }
