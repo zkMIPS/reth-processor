@@ -149,6 +149,14 @@ impl Ref {
     }
 }
 
+/// A child slot whose top bit is set holds no node: the low bits are the
+/// byte offset, in `ArenaTrie::stream`, of the 32-byte digest the parent's
+/// RLP references (a sibling outside the witness).  The witness carries far
+/// more such digests than nodes (a reth block: ~160 K digests against ~20 K
+/// nodes), and materialising each as a node cost two arena pushes and a
+/// reallocation or two per trie.
+const DIGEST_BIT: NodeId = 1 << 31;
+
 /// A Merkle Patricia trie whose nodes live in one arena.
 #[derive(Debug, Clone)]
 pub struct ArenaTrie {
@@ -156,11 +164,14 @@ pub struct ArenaTrie {
     /// Cached reference of each node; `None` after a mutation on its path.
     refs: Vec<Option<Ref>>,
     root: NodeId,
+    /// The witness stream the digest slots point into (empty for a trie
+    /// built by insertion).
+    stream: Bytes,
 }
 
 impl Default for ArenaTrie {
     fn default() -> Self {
-        Self { nodes: vec![Node::Null], refs: vec![None], root: 0 }
+        Self { nodes: vec![Node::Null], refs: vec![None], root: 0, stream: Bytes::new() }
     }
 }
 
@@ -217,19 +228,35 @@ fn take_item<'a>(
 impl ArenaTrie {
     /// Build the trie from its root hash and preorder node stream, checking
     /// every node's keccak against the digest that references it.
-    pub fn from_stream(root: B256, stream: &[u8]) -> Result<Self, Error> {
+    pub fn from_stream(root: B256, stream: Bytes) -> Result<Self, Error> {
+        // Real nodes only: a witnessed node is a few hundred bytes on average
+        // (branches dominate), so this never reallocates.
+        let cap = stream.len() / 96 + 8;
         let mut trie = ArenaTrie {
-            nodes: Vec::with_capacity(stream.len() / 48 + 8),
-            refs: Vec::with_capacity(stream.len() / 48 + 8),
+            nodes: Vec::with_capacity(cap),
+            refs: Vec::with_capacity(cap),
             root: NONE,
+            stream: stream.clone(),
         };
-        let mut s = Stream { buf: stream, pos: 0 };
-        let id = trie.build(&mut s, root)?;
+        let mut s = Stream { buf: &stream, pos: 0 };
+        let id = trie.build(&mut s, root, None)?;
         if s.pos != stream.len() {
             return Err(Error::WitnessFormat("trailing bytes"));
         }
         trie.root = id;
         Ok(trie)
+    }
+
+    #[inline]
+    fn is_digest(id: NodeId) -> bool {
+        id != NONE && id & DIGEST_BIT != 0
+    }
+
+    /// The digest a digest slot references.
+    #[inline]
+    fn digest_at(&self, id: NodeId) -> B256 {
+        let off = (id & !DIGEST_BIT) as usize;
+        B256::from_slice(&self.stream[off..off + 32])
     }
 
     #[inline]
@@ -240,13 +267,23 @@ impl ArenaTrie {
         id
     }
 
-    /// Next stream entry, which the parent references by `expected`.
-    fn build(&mut self, s: &mut Stream<'_>, expected: B256) -> Result<NodeId, Error> {
+    /// Next stream entry, which the parent references by `expected`.  A
+    /// digest entry becomes `slot` when the parent offers one (the offset of
+    /// the digest in its own RLP), else a `Node::Digest` (the root).
+    fn build(
+        &mut self,
+        s: &mut Stream<'_>,
+        expected: B256,
+        slot: Option<NodeId>,
+    ) -> Result<NodeId, Error> {
         match s.byte()? {
-            TAG_DIGEST => Ok(self.push(Node::Digest(expected), Some(Ref::Digest(expected)))),
+            TAG_DIGEST => Ok(match slot {
+                Some(id) => id,
+                None => self.push(Node::Digest(expected), Some(Ref::Digest(expected))),
+            }),
             TAG_NODE => {
                 let bytes = s.node()?;
-                if keccak(bytes) != expected.0 {
+                if !eq32(&keccak(bytes), &expected.0) {
                     return Err(Error::WitnessNodeMismatch(expected));
                 }
                 let r = if bytes.len() < 32 {
@@ -279,7 +316,11 @@ impl ArenaTrie {
         }
         match payload.len() {
             0 => Ok(NONE),
-            32 => self.build(s, B256::from_slice(payload)),
+            32 => {
+                // Where this digest sits in the stream, for a digest slot.
+                let off = payload.as_ptr() as usize - self.stream.as_ptr() as usize;
+                self.build(s, B256::from_slice(payload), Some(DIGEST_BIT | off as NodeId))
+            }
             _ => Err(alloy_rlp::Error::UnexpectedLength.into()),
         }
     }
@@ -359,6 +400,9 @@ impl ArenaTrie {
     }
 
     fn get_internal(&self, id: NodeId, key_nibs: &[u8]) -> Result<Option<&[u8]>, Error> {
+        if Self::is_digest(id) {
+            return Err(Error::NodeNotResolved(self.digest_at(id)));
+        }
         match &self.nodes[id as usize] {
             Node::Null => Ok(None),
             Node::Branch(children) => match key_nibs.split_first() {
@@ -408,6 +452,9 @@ impl ArenaTrie {
     }
 
     fn reference(&mut self, id: NodeId) -> Ref {
+        if Self::is_digest(id) {
+            return Ref::Digest(self.digest_at(id));
+        }
         if let Some(r) = &self.refs[id as usize] {
             return r.clone();
         }
@@ -494,6 +541,9 @@ impl ArenaTrie {
     }
 
     fn insert_internal(&mut self, id: NodeId, key_nibs: &[u8], value: Vec<u8>) -> Result<bool, Error> {
+        if Self::is_digest(id) {
+            return Err(Error::NodeNotResolved(self.digest_at(id)));
+        }
         let changed = match &mut self.nodes[id as usize] {
             Node::Null => {
                 self.nodes[id as usize] = Node::Leaf(to_encoded_path(key_nibs, true), value);
@@ -589,6 +639,9 @@ impl ArenaTrie {
     }
 
     fn delete_internal(&mut self, id: NodeId, key_nibs: &[u8]) -> Result<bool, Error> {
+        if Self::is_digest(id) {
+            return Err(Error::NodeNotResolved(self.digest_at(id)));
+        }
         match &self.nodes[id as usize] {
             Node::Null => return Ok(false),
             Node::Branch(children) => {
@@ -611,7 +664,12 @@ impl ArenaTrie {
                 let (index, orphan) = remaining.next().map(|(i, c)| (i, *c)).unwrap();
                 if remaining.next().is_none() {
                     // one child left: the branch collapses into it
-                    let new = match mem::replace(&mut self.nodes[orphan as usize], Node::Null) {
+                    let new = if Self::is_digest(orphan) {
+                        // a digest slot has no node: the branch becomes an
+                        // extension to the digest
+                        Node::Extension(to_encoded_path(&[index as u8], false), orphan)
+                    } else {
+                    match mem::replace(&mut self.nodes[orphan as usize], Node::Null) {
                         Node::Leaf(prefix, value) => {
                             let mut nibs = vec![index as u8];
                             nibs.extend(prefix_nibs(&prefix));
@@ -628,6 +686,7 @@ impl ArenaTrie {
                             Node::Extension(to_encoded_path(&[index as u8], false), orphan)
                         }
                         Node::Null => unreachable!(),
+                    }
                     };
                     self.nodes[id as usize] = new;
                 }
@@ -672,6 +731,18 @@ impl ArenaTrie {
     }
 }
 
+/// 32-byte equality as eight word compares: the generic `memcmp` takes the
+/// byte loop for these stack arrays.
+#[inline]
+fn eq32(a: &[u8; 32], b: &[u8; 32]) -> bool {
+    let mut acc = 0u32;
+    for i in (0..32).step_by(4) {
+        acc |= u32::from_ne_bytes([a[i], a[i + 1], a[i + 2], a[i + 3]])
+            ^ u32::from_ne_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+    }
+    acc == 0
+}
+
 /// `key_nibs` with a compact-encoded `prefix` stripped off the front, without
 /// materialising the prefix's nibbles.
 fn strip_prefix_nibs<'a>(key_nibs: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
@@ -710,7 +781,7 @@ impl ArenaState {
     /// it and each trie against its root; the state root is checked against
     /// `witness.state_root`, the storage roots against the account leaves.
     pub fn from_witness(witness: &WitnessState) -> Result<Self, Error> {
-        let state_trie = ArenaTrie::from_stream(witness.state_root, &witness.state_nodes)?;
+        let state_trie = ArenaTrie::from_stream(witness.state_root, witness.state_nodes.clone())?;
         let mut storage_tries = HashMap::with_capacity_and_hasher(witness.storage.len(), Default::default());
         for (hashed_address, root, nodes) in &witness.storage {
             let expected = state_trie
@@ -719,7 +790,7 @@ impl ArenaState {
             if *root != expected {
                 return Err(Error::WitnessNodeMismatch(expected));
             }
-            storage_tries.insert(*hashed_address, ArenaTrie::from_stream(*root, nodes)?);
+            storage_tries.insert(*hashed_address, ArenaTrie::from_stream(*root, nodes.clone())?);
         }
         Ok(Self { state_trie, storage_tries })
     }
@@ -834,7 +905,7 @@ mod tests {
     }
 
     fn arena_of(trie: &MptNode) -> ArenaTrie {
-        ArenaTrie::from_stream(trie.hash(), &witness_stream(trie)).unwrap()
+        ArenaTrie::from_stream(trie.hash(), witness_stream(trie)).unwrap()
     }
 
     #[test]
@@ -955,10 +1026,10 @@ mod tests {
         let last = stream.len() - 1;
         stream[last] ^= 1;
         assert!(matches!(
-            ArenaTrie::from_stream(oracle.hash(), &stream),
+            ArenaTrie::from_stream(oracle.hash(), Bytes::from(stream.clone())),
             Err(Error::WitnessNodeMismatch(_))
         ));
-        assert!(ArenaTrie::from_stream(B256::ZERO, &witness_stream(&oracle)).is_err());
+        assert!(ArenaTrie::from_stream(B256::ZERO, witness_stream(&oracle)).is_err());
     }
 
     #[test]
