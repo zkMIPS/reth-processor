@@ -28,6 +28,13 @@ pub struct Args {
     #[clap(long, default_value_t = 100)]
     pub block_interval: u64,
 
+    /// Which residue class of `block_interval` this instance proves: blocks
+    /// with `number % block_interval == block_residue`.  Two instances with
+    /// `--block-interval 2` and residues 0 and 1 split the chain between two
+    /// provers and prove two blocks at a time.
+    #[clap(long, default_value_t = 0)]
+    pub block_residue: u64,
+
     /// How many prepared blocks (fetched + natively executed) may wait for the
     /// prover.  The fetch of block N+1 always overlaps the proof of block N;
     /// this bounds how far ahead the fetcher runs.

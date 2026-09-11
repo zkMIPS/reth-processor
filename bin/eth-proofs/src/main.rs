@@ -63,8 +63,10 @@ async fn main() -> eyre::Result<()> {
     // Subscribe to block headers.
     let subscription = ws_provider.subscribe_blocks().await?;
     let block_interval = args.block_interval;
-    let mut stream =
-        subscription.into_stream().filter(move |h| ready(h.number % block_interval == 0));
+    let block_residue = args.block_residue % block_interval.max(1);
+    let mut stream = subscription
+        .into_stream()
+        .filter(move |h| ready(h.number % block_interval == block_residue));
 
     // let mut builder = ProverClient::builder().cuda();
     if let Some(_endpoint) = &args.moongate_endpoint {
@@ -113,6 +115,8 @@ async fn main() -> eyre::Result<()> {
                         Some(header) => {
                             head = head.max(header.number);
                             if next == 0 {
+                                // The stream only delivers this instance's
+                                // residue class, so the cursor starts aligned.
                                 next = header.number;
                             }
                             continue;
