@@ -567,6 +567,29 @@ impl ArenaTrie {
         r
     }
 
+    /// The length of node `id`'s reference, without materialising it.
+    #[inline]
+    fn reference_length(&mut self, id: NodeId) -> usize {
+        if Self::is_digest(id) {
+            return 33;
+        }
+        self.reference(id).length()
+    }
+
+    /// Append node `id`'s reference to `out`.  A digest slot's bytes are
+    /// copied from the witness stream, so no `B256` is built for it — the
+    /// state root re-references every unmodified sibling of every node it
+    /// rehashes, which made that copy one of the stage's larger costs.
+    fn write_reference(&mut self, id: NodeId, out: &mut Vec<u8>) {
+        if Self::is_digest(id) {
+            let off = (id & !DIGEST_BIT) as usize;
+            out.push(DIGEST_STRING_CODE);
+            out.extend_from_slice(&self.stream[off..off + 32]);
+            return;
+        }
+        self.reference(id).encode(out);
+    }
+
     /// The RLP encoding of node `id` (children as references).
     fn encode(&mut self, id: NodeId) -> Vec<u8> {
         match self.nodes[id as usize].clone() {
@@ -581,32 +604,28 @@ impl ArenaTrie {
                 out
             }
             Node::Extension(prefix, child) => {
-                let child_ref = self.reference(child);
-                let payload = prefix.as_slice().length() + child_ref.length();
+                let payload = prefix.as_slice().length() + self.reference_length(child);
                 let mut out = Vec::with_capacity(payload + 3);
                 alloy_rlp::Header { list: true, payload_length: payload }.encode(&mut out);
                 prefix.as_slice().encode(&mut out);
-                child_ref.encode(&mut out);
+                self.write_reference(child, &mut out);
                 out
             }
             Node::Branch(children) => {
-                let mut refs: [Option<Ref>; 16] = Default::default();
+                // Two passes over the children, sizing then writing, so a
+                // digest slot never has to become a `Ref`: its 32 bytes are
+                // copied straight from the witness stream into the output.
                 let mut payload = 1; // the empty value
-                for (slot, child) in refs.iter_mut().zip(children.iter()) {
-                    if *child != NONE {
-                        let r = self.reference(*child);
-                        payload += r.length();
-                        *slot = Some(r);
-                    } else {
-                        payload += 1;
-                    }
+                for child in children.iter() {
+                    payload += if *child == NONE { 1 } else { self.reference_length(*child) };
                 }
                 let mut out = Vec::with_capacity(payload + 3);
                 alloy_rlp::Header { list: true, payload_length: payload }.encode(&mut out);
-                for r in refs.iter() {
-                    match r {
-                        Some(r) => r.encode(&mut out),
-                        None => out.push(alloy_rlp::EMPTY_STRING_CODE),
+                for child in children.iter() {
+                    if *child == NONE {
+                        out.push(alloy_rlp::EMPTY_STRING_CODE);
+                    } else {
+                        self.write_reference(*child, &mut out);
                     }
                 }
                 out.push(alloy_rlp::EMPTY_STRING_CODE);
