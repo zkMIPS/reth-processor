@@ -29,6 +29,10 @@ use super::mpt::{
 };
 
 /// Stream tag: the referenced node is not part of the witness (stays a digest).
+/// The RLP prefix of a 32-byte string: how a trie node references a child
+/// that lives outside it.
+const DIGEST_STRING_CODE: u8 = alloy_rlp::EMPTY_STRING_CODE + 32;
+
 const TAG_DIGEST: u8 = 0;
 /// Stream tag: a node follows as `varint(len) || rlp`.
 const TAG_NODE: u8 = 1;
@@ -281,6 +285,31 @@ impl<'a> Stream<'a> {
 fn take_item<'a>(
     buf: &mut &'a [u8],
 ) -> Result<(alloy_rlp::Header, &'a [u8], &'a [u8]), alloy_rlp::Error> {
+    // Fast paths.  Nearly every item inside a witness trie node is either an
+    // absent child (`0x80`) or a 32-byte digest (`0xa0 ..`), and there are
+    // ~200 K of them per reth block: the generic header decoder's bounds
+    // checks and length arithmetic are most of what the witness load spends.
+    match buf.first() {
+        Some(&alloy_rlp::EMPTY_STRING_CODE) => {
+            let (whole, rest) = buf.split_at(1);
+            *buf = rest;
+            return Ok((
+                alloy_rlp::Header { list: false, payload_length: 0 },
+                &whole[1..],
+                whole,
+            ));
+        }
+        Some(&DIGEST_STRING_CODE) if buf.len() >= 33 => {
+            let (whole, rest) = buf.split_at(33);
+            *buf = rest;
+            return Ok((
+                alloy_rlp::Header { list: false, payload_length: 32 },
+                &whole[1..],
+                whole,
+            ));
+        }
+        _ => {}
+    }
     let start = *buf;
     let header = alloy_rlp::Header::decode(buf)?;
     let payload = buf.get(..header.payload_length).ok_or(alloy_rlp::Error::InputTooShort)?;
@@ -403,49 +432,49 @@ impl ArenaTrie {
                 _ => Err(alloy_rlp::Error::UnexpectedString.into()),
             };
         }
-        // count items (2 = leaf/extension, 17 = branch)
+        // ONE pass.  A node is either 2 items (leaf or extension) or 17 (a
+        // branch), and the first two tell them apart: a second item that does
+        // not end the payload means a branch.  Counting the items first, as
+        // this did, parsed every node twice.
         let mut rest = payload;
-        let mut items = 0usize;
-        while !rest.is_empty() {
-            take_item(&mut rest)?;
-            items += 1;
-        }
-        let mut rest = payload;
-        match items {
-            2 => {
-                let (h, path, _) = take_item(&mut rest)?;
-                if h.list || path.is_empty() {
+        let (h0, p0, w0) = take_item(&mut rest)?;
+        let (h1, p1, w1) = take_item(&mut rest)?;
+        if rest.is_empty() {
+            // Item 0 is the compact-encoded path; its high nibble says whether
+            // item 1 is a value (leaf) or a child (extension).
+            if h0.list || p0.is_empty() {
+                return Err(alloy_rlp::Error::UnexpectedList.into());
+            }
+            return if p0[0] & 0x20 == 0 {
+                let child = self.child(h1, p1, w1, s)?;
+                if child == NONE {
+                    return Err(Error::WitnessFormat("extension without child"));
+                }
+                Ok(self.push(Node::Extension(p0.to_vec(), child), Some(r)))
+            } else {
+                if h1.list {
                     return Err(alloy_rlp::Error::UnexpectedList.into());
                 }
-                if path[0] & 0x20 == 0 {
-                    let (h, item, whole) = take_item(&mut rest)?;
-                    let child = self.child(h, item, whole, s)?;
-                    if child == NONE {
-                        return Err(Error::WitnessFormat("extension without child"));
-                    }
-                    Ok(self.push(Node::Extension(path.to_vec(), child), Some(r)))
-                } else {
-                    let (h, value, _) = take_item(&mut rest)?;
-                    if h.list {
-                        return Err(alloy_rlp::Error::UnexpectedList.into());
-                    }
-                    Ok(self.push(Node::Leaf(path.to_vec(), value.to_vec()), Some(r)))
-                }
-            }
-            17 => {
-                let mut children = [NONE; 16];
-                for slot in children.iter_mut() {
-                    let (h, item, whole) = take_item(&mut rest)?;
-                    *slot = self.child(h, item, whole, s)?;
-                }
-                let (h, value, _) = take_item(&mut rest)?;
-                if h.list || !value.is_empty() {
-                    return Err(Error::WitnessFormat("branch node with value"));
-                }
-                Ok(self.push(Node::Branch(children), Some(r)))
-            }
-            _ => Err(alloy_rlp::Error::UnexpectedLength.into()),
+                Ok(self.push(Node::Leaf(p0.to_vec(), p1.to_vec()), Some(r)))
+            };
         }
+        // A branch: 16 children then an empty value.  The children are walked
+        // in order because `child` may consume the next stream entry.
+        let mut children = [NONE; 16];
+        children[0] = self.child(h0, p0, w0, s)?;
+        children[1] = self.child(h1, p1, w1, s)?;
+        for slot in children[2..].iter_mut() {
+            let (h, item, whole) = take_item(&mut rest)?;
+            *slot = self.child(h, item, whole, s)?;
+        }
+        let (h, value, _) = take_item(&mut rest)?;
+        if h.list || !value.is_empty() {
+            return Err(Error::WitnessFormat("branch node with value"));
+        }
+        if !rest.is_empty() {
+            return Err(alloy_rlp::Error::UnexpectedLength.into());
+        }
+        Ok(self.push(Node::Branch(children), Some(r)))
     }
 
     // -- reads ---------------------------------------------------------------
