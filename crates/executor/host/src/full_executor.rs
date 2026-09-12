@@ -113,7 +113,16 @@ pub trait BlockExecutor<C: ExecutorComponents> {
 
             info!("cycles: {:?}", proof_with_cycles.1);
 
-            let proving_duration = proving_start.elapsed();
+            // Prefer the prover's own measure when it has one.  This process
+            // times the whole call, which with a pipelined caller includes the
+            // request waiting in the prover's queue; the prover times only the
+            // proving.  Everything downstream — the eth-proofs submission
+            // among it — should report proving, not queueing.
+            let proving_duration = self
+                .client()
+                .take_prove_ms()
+                .map(Duration::from_millis)
+                .unwrap_or_else(|| proving_start.elapsed());
             let proof_bytes = bincode::serialize(&proof_with_cycles.0.proof).unwrap();
             let public_values_bytes =
                 bincode::serialize(&proof_with_cycles.0.public_values).unwrap();

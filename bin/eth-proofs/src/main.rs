@@ -155,9 +155,31 @@ async fn main() -> eyre::Result<()> {
         })
     };
 
+    // Prove one block ahead of the one being awaited.  The prover serialises
+    // the work itself (one job at a time, on its own mutex), so the second
+    // request only overlaps what happens BEFORE proving: shipping a 13 MB
+    // client input over the wire and deserialising it, ~0.35 s per block that
+    // the cards would otherwise spend idle between blocks.
+    let mut inflight: Option<(u64, tokio::task::JoinHandle<eyre::Result<()>>)> = None;
     while let Some((number, client_input)) = rx.next().await {
-        if let Err(err) = executor.prove_prepared(client_input).await {
-            report_error(&alerting_client, number, err).await;
+        let executor = executor.clone();
+        let next = tokio::spawn(async move { executor.prove_prepared(client_input).await });
+        if let Some((prev_number, prev)) = inflight.replace((number, next)) {
+            match prev.await {
+                Ok(Err(err)) => report_error(&alerting_client, prev_number, err).await,
+                Err(err) => {
+                    report_error(&alerting_client, prev_number, eyre::eyre!("prove task: {err}"))
+                        .await
+                }
+                Ok(Ok(())) => {}
+            }
+        }
+    }
+    if let Some((number, last)) = inflight {
+        match last.await {
+            Ok(Err(err)) => report_error(&alerting_client, number, err).await,
+            Err(err) => report_error(&alerting_client, number, eyre::eyre!("prove task: {err}")).await,
+            Ok(Ok(())) => {}
         }
     }
     fetcher.await?;
