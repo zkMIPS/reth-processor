@@ -38,10 +38,74 @@ const TAG_NODE: u8 = 1;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WitnessState {
     pub state_root: B256,
+    #[serde(deserialize_with = "input_bytes")]
     pub state_nodes: Bytes,
-    /// `(hashed address, storage root, preorder node stream)`, sorted by
-    /// address so the input bytes are reproducible.
-    pub storage: Vec<(B256, B256, Bytes)>,
+    /// One entry per storage trie, sorted by hashed address so the input
+    /// bytes are reproducible.
+    pub storage: Vec<StorageWitness>,
+}
+
+/// One account's storage trie in witness form: its hashed address, its root
+/// and the preorder stream of its raw RLP nodes.
+///
+/// Bincode writes a struct as its fields in order, so this is byte-identical
+/// to the `(B256, B256, Bytes)` tuple it replaced and cached inputs stay
+/// readable.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorageWitness {
+    pub hashed_address: B256,
+    pub root: B256,
+    #[serde(deserialize_with = "input_bytes")]
+    pub nodes: Bytes,
+}
+
+/// Deserialise a byte string into `Bytes` without copying it in the guest.
+///
+/// The program input is read once and leaked by `main`, so it outlives the
+/// run and bincode's borrowed slices of it can be kept as they are: the
+/// witness streams are 6-7 MB per reth block, and copying them out of the
+/// input buffer cost ~7 M cycles.  Off the zkVM the bytes are copied.
+fn input_bytes<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Bytes, D::Error> {
+    struct V;
+    impl<'de> serde::de::Visitor<'de> for V {
+        type Value = Bytes;
+
+        fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.write_str("a byte string")
+        }
+
+        fn visit_borrowed_bytes<E: serde::de::Error>(self, v: &'de [u8]) -> Result<Bytes, E> {
+            #[cfg(target_os = "zkvm")]
+            {
+                // SAFETY: the guest leaks its input buffer (bin/guest/src/main.rs),
+                // so every slice of it lives as long as the program.
+                let v: &'static [u8] =
+                    unsafe { core::mem::transmute::<&'de [u8], &'static [u8]>(v) };
+                Ok(Bytes::from_static(v))
+            }
+            #[cfg(not(target_os = "zkvm"))]
+            {
+                Ok(Bytes::copy_from_slice(v))
+            }
+        }
+
+        fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Bytes, E> {
+            Ok(Bytes::copy_from_slice(v))
+        }
+
+        fn visit_byte_buf<E: serde::de::Error>(self, v: Vec<u8>) -> Result<Bytes, E> {
+            Ok(Bytes::from(v))
+        }
+
+        fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Bytes, A::Error> {
+            let mut out = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+            while let Some(b) = seq.next_element::<u8>()? {
+                out.push(b);
+            }
+            Ok(Bytes::from(out))
+        }
+    }
+    d.deserialize_bytes(V)
 }
 
 // ---------------------------------------------------------------------------
@@ -783,7 +847,7 @@ impl ArenaState {
     pub fn from_witness(witness: &WitnessState) -> Result<Self, Error> {
         let state_trie = ArenaTrie::from_stream(witness.state_root, witness.state_nodes.clone())?;
         let mut storage_tries = HashMap::with_capacity_and_hasher(witness.storage.len(), Default::default());
-        for (hashed_address, root, nodes) in &witness.storage {
+        for StorageWitness { hashed_address, root, nodes } in &witness.storage {
             let expected = state_trie
                 .get_rlp::<TrieAccount>(hashed_address.as_slice())?
                 .map_or(EMPTY_ROOT_HASH, |a| a.storage_root);

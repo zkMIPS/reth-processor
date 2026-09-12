@@ -12,7 +12,7 @@ mod execution_witness;
 mod mpt;
 /// Arena-backed trie built from a preorder RLP witness stream (the guest's form).
 mod arena;
-pub use arena::{witness_stream, ArenaState, ArenaTrie, WitnessState};
+pub use arena::{witness_stream, ArenaState, ArenaTrie, StorageWitness, WitnessState};
 pub use mpt::Error;
 use mpt::{
     extend_trie_from_proof, mpt_from_proof, node_from_digest, parse_proof, proofs_to_tries,
@@ -185,12 +185,16 @@ impl EthereumState {
     /// of raw RLP nodes for the state trie and every storage trie (sorted by
     /// hashed address so the bytes are reproducible).
     pub fn to_witness_state(&self) -> WitnessState {
-        let mut storage: Vec<(B256, B256, alloy_primitives::Bytes)> = self
+        let mut storage: Vec<StorageWitness> = self
             .storage_tries
             .iter()
-            .map(|(addr, trie)| (*addr, trie.hash(), witness_stream(trie)))
+            .map(|(addr, trie)| StorageWitness {
+                hashed_address: *addr,
+                root: trie.hash(),
+                nodes: witness_stream(trie),
+            })
             .collect();
-        storage.sort_by(|a, b| a.0.cmp(&b.0));
+        storage.sort_by(|a, b| a.hashed_address.cmp(&b.hashed_address));
         WitnessState {
             state_root: self.state_trie.hash(),
             state_nodes: witness_stream(&self.state_trie),

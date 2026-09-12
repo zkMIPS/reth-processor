@@ -109,9 +109,9 @@ fn main() {
     println!("state trie: {} B stream, {state:?}", w.state_nodes.len());
     let mut storage = Census::default();
     let mut storage_bytes = 0;
-    for (_, _, s) in &w.storage {
-        storage_bytes += s.len();
-        walk(s, &mut storage);
+    for sw in &w.storage {
+        storage_bytes += sw.nodes.len();
+        walk(&sw.nodes, &mut storage);
     }
     println!("storage tries: {} tries, {storage_bytes} B streams, {storage:?}", w.storage.len());
     println!(
